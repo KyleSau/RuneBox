@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from src.cache.cache_locator import CacheReader
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, discover_cache_dir
 from src.rs2.sound_bank import load_sounds
 from src.rs2.sound_names import build_sound_index, parse_wiki_markdown, save_sound_index
 from src.rs2.sound_track import SoundTrack
@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    cache = CacheReader(resolve_cache_dir(args.cache))
+    cache = CacheReader(discover_cache_dir(args.cache))
     load_sounds(cache)
     cache_ids = set(SoundTrack.tracks.keys())
 

@@ -18,12 +18,13 @@ ROUNDTRIP_DIR = OUTPUT_ROOT / "roundtrip"
 INPUTS_DIR = PIPELINE_ROOT / "inputs"
 MOCK_MESH_SOURCE = INPUTS_DIR / "test_axe.obj"
 
-# Default cache path (377 OpenRS2 dump in project root).
-DEFAULT_CACHE_ROOT = (
-    PROJECT_ROOT
-    / "cache-runescape-live-en-b377-2006-05-02-00-00-00-openrs2#657"
+# Universal local cache folder — any OpenRS2 flatfile extract (317, 377, 474, …).
+# Place main_file_cache.dat + idx files here (see README Getting Started).
+CACHE_DIR_CANDIDATES = (
+    PROJECT_ROOT / "cache",
+    PIPELINE_ROOT / "cache",
 )
-DEFAULT_CACHE_DIR = DEFAULT_CACHE_ROOT / "cache"
+DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 
 # Java client dev-model defaults (relative to pipeline root).
 DEFAULT_CLIENT_DIR = PROJECT_ROOT / "RuneScape-317-client"
@@ -83,6 +84,28 @@ def resolve_cache_dir(path: Path) -> Path:
     if (path / "cache" / "main_file_cache.dat").exists():
         return path / "cache"
     return path
+
+
+def discover_cache_dir(explicit: Path | None = None) -> Path:
+    """Pick the first usable cache dir: explicit arg, RS_CACHE env, then candidates."""
+    if explicit is not None:
+        return resolve_cache_dir(explicit)
+    env = os.environ.get("RS_CACHE")
+    if env:
+        return resolve_cache_dir(Path(env))
+    for candidate in CACHE_DIR_CANDIDATES:
+        resolved = resolve_cache_dir(candidate)
+        if (resolved / "main_file_cache.dat").exists():
+            return resolved
+    return resolve_cache_dir(DEFAULT_CACHE_DIR)
+
+
+def cache_setup_hint() -> str:
+    return (
+        "Download a cache flatfile from https://archive.openrs2.org/caches "
+        f"and place main_file_cache.dat under {DEFAULT_CACHE_DIR}/ "
+        f"(or set RS_CACHE to another path)."
+    )
 
 
 def resolve_java_exe() -> str:

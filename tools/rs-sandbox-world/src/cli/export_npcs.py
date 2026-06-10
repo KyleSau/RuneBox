@@ -18,7 +18,7 @@ from pathlib import Path
 from src.cache.cache_locator import CacheReader
 from src.cache.config_locator import ConfigNotFoundError
 from src.cache.npc_index import NPCIndex
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, discover_cache_dir
 from src.export.anim_data import load_animation_data
 from src.export.animation import compute_seq_morphs, spotanim_posed_vertices
 from src.export.gltf_export import export_glb
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    cache_dir = resolve_cache_dir(args.cache)
+    cache_dir = discover_cache_dir(args.cache)
 
     try:
         index = NPCIndex.from_cache(cache_dir=cache_dir)

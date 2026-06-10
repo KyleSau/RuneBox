@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from src.cache.cache_locator import CacheReader
 from src.cache.npc_index import NPCIndex
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, cache_setup_hint, discover_cache_dir
 from src.export.anim_data import load_animation_data
 from src.export.npc_glb import (
     build_model_glb_bytes,
@@ -881,9 +881,14 @@ def main(argv: list[str] | None = None) -> int:
     root = web.parent
     print(f"Web root: {root}")
     print(f"Open: http://{args.host}:{args.port}/web/rs_viewer.html")
-    print("NPCs, objects, spotanims (GFX), sounds: synthesized from 377 cache")
+    print("NPCs, objects, spotanims (GFX), sounds: synthesized from cache on demand")
 
-    cache_dir = resolve_cache_dir(args.cache)
+    cache_dir = discover_cache_dir(args.cache)
+    if not (cache_dir / "main_file_cache.dat").exists():
+        print(f"ERROR: No cache found at {cache_dir}")
+        print(cache_setup_hint())
+        return 1
+    print(f"Cache: {cache_dir}")
     cache = CacheReader(cache_dir)
     index = NPCIndex.from_cache(cache_dir=cache_dir)
     print(f"NPC defs: {index.count}")

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from src.cache.config_locator import ConfigNotFoundError
 from src.cache.npc_index import NPCIndex
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, discover_cache_dir
 
 
 def _format_npc(npc) -> str:
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         index = NPCIndex.from_cache(
-            cache_dir=resolve_cache_dir(args.cache) if args.cache else None,
+            cache_dir=discover_cache_dir(args.cache) if args.cache else None,
             config_archive_path=args.config_archive,
             npc_dat=args.npc_dat,
             npc_idx=args.npc_idx,

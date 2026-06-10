@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from src.cache.cache_locator import CacheReader
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, discover_cache_dir
 from src.preview.render_preview import export_obj
 from src.rs2.model_decoder import decode_model
 
@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--obj", type=Path, help="Optional OBJ export path")
     args = parser.parse_args(argv)
 
-    cache = CacheReader(resolve_cache_dir(args.cache))
+    cache = CacheReader(discover_cache_dir(args.cache))
     raw = cache.read_model(args.model_id)
     if raw is None:
         print(f"Model {args.model_id} not found or empty in cache.", file=sys.stderr)

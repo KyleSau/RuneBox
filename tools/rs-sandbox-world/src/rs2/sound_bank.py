@@ -19,9 +19,9 @@ def load_sounds(cache: CacheReader | None = None, *, cache_dir: Path | None = No
     if _loaded:
         return
     if cache is None:
-        from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+        from src.config import discover_cache_dir
 
-        cache = CacheReader(resolve_cache_dir(cache_dir or DEFAULT_CACHE_DIR))
+        cache = CacheReader(discover_cache_dir(cache_dir))
     raw = cache.read_archive(_SOUNDS_ARCHIVE_ID)
     if raw is None:
         raise FileNotFoundError("Sound archive (idx0 file 8) missing from cache")

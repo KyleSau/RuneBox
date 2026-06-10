@@ -9,7 +9,7 @@ from pathlib import Path
 from src.cache.cache_locator import CacheReader
 from src.cache.config_locator import DEFAULT_CONFIG_ARCHIVE_ID
 from src.cache.file_archive import FileArchive
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, discover_cache_dir
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify", action="store_true", help="Verify npc.dat/obj.dat exist after extract")
     args = parser.parse_args(argv)
 
-    cache = CacheReader(resolve_cache_dir(args.cache))
+    cache = CacheReader(discover_cache_dir(args.cache))
     raw = cache.read_archive(DEFAULT_CONFIG_ARCHIVE_ID)
     if raw is None:
         print(

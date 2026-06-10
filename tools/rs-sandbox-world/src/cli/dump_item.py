@@ -9,7 +9,7 @@ from pathlib import Path
 
 from src.cache.config_locator import ConfigNotFoundError
 from src.cache.item_index import ItemIndex
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, discover_cache_dir
 
 
 def _format_item(item) -> str:
@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Provide --item-id or --search")
 
     try:
-        index = ItemIndex.from_cache(cache_dir=resolve_cache_dir(args.cache), config_archive_path=args.config_archive)
+        index = ItemIndex.from_cache(cache_dir=discover_cache_dir(args.cache), config_archive_path=args.config_archive)
     except ConfigNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 1

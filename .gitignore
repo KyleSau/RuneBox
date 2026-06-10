@@ -11,6 +11,12 @@ concepts/
 cache-runescape*/
 apollo-kotlin-experiments/
 
+# Game cache (user-provided; see README Getting Started)
+/cache/*
+!cache/.gitkeep
+/tools/rs-sandbox-world/cache/*
+!tools/rs-sandbox-world/cache/.gitkeep
+
 # Legacy path (renamed to tools/rs-sandbox-world)
 tools/rs-model-pipeline/
 

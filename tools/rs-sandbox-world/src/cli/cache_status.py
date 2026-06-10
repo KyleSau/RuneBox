@@ -10,7 +10,7 @@ from src.cache.config_locator import DEFAULT_CONFIG_ARCHIVE_ID, load_config_arch
 from src.cache.file_archive import FileArchive
 from src.cache import java_bridge
 from src.cache.model_index import load_model_count
-from src.config import DEFAULT_CACHE_DIR, resolve_cache_dir
+from src.config import DEFAULT_CACHE_DIR, cache_setup_hint, discover_cache_dir
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,7 +23,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    cache_dir = resolve_cache_dir(args.cache)
+    cache_dir = discover_cache_dir(args.cache)
+    if not (cache_dir / "main_file_cache.dat").exists():
+        print(f"No cache at {cache_dir}")
+        print(cache_setup_hint())
+        return 1
     paths = CachePaths.from_directory(cache_dir)
     cache = CacheReader(cache_dir)
 
