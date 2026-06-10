@@ -2,7 +2,8 @@
 
 A browser-based **RuneScape sandbox** built on a live game cache. Explore NPCs, objects, and scenery as GLB models, edit tile worlds, play chess with animated NPC pieces, customize characters, and clone NPCs with per-part recolours — all synthesized on demand in Python.
 
-![RuneBox chess sandbox](showcase.png)
+<img width="1324" height="838" alt="image" src="https://github.com/user-attachments/assets/cb1672a4-8dfe-4850-ad8d-07f6575616c9" />
+
 <img width="1448" height="1086" alt="e7aecd28-e838-415d-9a40-46397d2b6320" src="https://github.com/user-attachments/assets/233c8ba2-321d-4d60-a13e-90d6506265ea" />
 
 ## Getting Started
