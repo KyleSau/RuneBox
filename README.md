@@ -6,25 +6,18 @@ A browser-based **RuneScape sandbox** built on a live game cache. Explore NPCs, 
 
 ## Getting Started
 
-### 1. Clone this repo
-
-```bash
-git clone https://github.com/KyleSau/RuneBox.git
-cd RuneBox
-```
-
-### 2. Download a game cache (not included)
+### 1. Download a game cache (not included)
 
 RuneBox does **not** ship Jagex game data. You need a local cache extract.
 
 1. Go to **[OpenRS2 Archives](https://archive.openrs2.org/caches)**
 2. Pick a build — **revision 377** is what this project was developed against (317 and 474 also work for many features)
-3. Download as **flatfile** (not the SQLite database)
+3. Download as **flatfile** (not the .dat/idx version)
 4. Extract the archive
 
 You should get a folder containing `main_file_cache.dat` and `main_file_cache.idx0`–`idx4` (sometimes inside a nested `cache/` subfolder).
 
-### 3. Place the cache in the project
+### 2. Place the cache in the project
 
 Copy the cache files into **`cache/`** at the repo root:
 
