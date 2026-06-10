@@ -1,0 +1,10 @@
+torch
+torchvision
+diffusers>=0.27
+transformers>=4.38,<5
+accelerate>=0.27
+rembg
+onnxruntime
+trimesh
+Pillow
+numpy

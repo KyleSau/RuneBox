@@ -1,0 +1,5 @@
+# Sample weapon prompts for batch generation (one per line, # comments ignored)
+bronze sword with jagged edge, low-poly 2005 MMORPG style
+demonic two-handed axe, dark metal, red blade accents
+iron mace with spiked head, simple game asset
+wooden staff with crystal orb, old-school fantasy

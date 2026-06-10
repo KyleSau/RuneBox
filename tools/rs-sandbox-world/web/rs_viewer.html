@@ -1,0 +1,3795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RS Model Viewer (three.js)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #14110e; color: #e8e2d6; font: 13px/1.4 system-ui, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  #ui {
+    position: absolute; top: 12px; left: 12px; z-index: 10; width: 300px;
+    max-height: calc(100vh - 24px); overflow-y: auto;
+    background: rgba(20,17,14,0.82); border: 1px solid #3a342b; border-radius: 8px;
+    padding: 12px; backdrop-filter: blur(6px);
+  }
+  #ui h1 { font-size: 14px; margin: 0 0 8px; color: #f0c987; }
+  #ui label { display: block; margin: 8px 0 3px; color: #b8ad99; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  #ui select, #ui input[type=text] { width: 100%; padding: 6px; background: #1d1813; color: #e8e2d6; border: 1px solid #3a342b; border-radius: 5px; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .row label { margin: 0; text-transform: none; letter-spacing: 0; color: #e8e2d6; font-size: 12px; }
+  #status { margin-top: 10px; font-size: 11px; color: #9c917d; white-space: pre-line; }
+  #drop { margin-top: 10px; padding: 10px; border: 1px dashed #4a4336; border-radius: 6px; text-align: center; color: #9c917d; font-size: 11px; }
+  button { padding: 6px 10px; background: #2a241c; color: #e8e2d6; border: 1px solid #4a4336; border-radius: 5px; cursor: pointer; }
+  button:hover { background: #3a3226; }
+  button.tgl-on { background: #5a4a22; border-color: #caa54a; color: #ffe9b0; font-weight: bold; }
+  a { color: #f0c987; }
+  /* Collapsible sections to keep the editor panel tidy. */
+  #ui details { margin-top: 10px; border-top: 1px solid #3a342b; padding-top: 6px; }
+  #ui summary { cursor: pointer; color: #f0c987; font-size: 13px; font-weight: 600; list-style: none; outline: none; }
+  #ui summary::-webkit-details-marker { display: none; }
+  #ui summary::before { content: '\25B8\00a0'; color: #9c917d; }
+  #ui details[open] > summary::before { content: '\25BE\00a0'; }
+  .hint { font-size: 11px; color: #9c917d; }
+  #hud-fps {
+    position: fixed; top: 12px; right: 12px; z-index: 10;
+    padding: 6px 10px; font-size: 12px; font-variant-numeric: tabular-nums;
+    color: #e8e2d6; background: rgba(20,17,14,0.82); border: 1px solid #3a342b;
+    border-radius: 6px; backdrop-filter: blur(6px); pointer-events: none;
+  }
+  #hud-fps span { color: #9c917d; }
+  /* RS-style world overlays: hit splats, health bars, click crosses, menu, hover text. */
+  #worldOverlay { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
+  /* Health bar: RS draws 30x5, green (current) over red (missing), centered above the head. */
+  .hpbar { position: absolute; width: 30px; height: 5px; background: #ff0000; transform: translate(-50%, -50%); }
+  .hpbar > i { display: block; height: 100%; background: #00ff00; }
+  /* Hit splat: 24x24 sprite (Image24) with a centered damage number (p11_full: white + 1px black shadow). */
+  .hitsplat { position: absolute; width: 25px; height: 25px; transform: translate(-50%, -50%); background-repeat: no-repeat; background-position: center; image-rendering: pixelated;
+    display: flex; align-items: center; justify-content: center; }
+  .hitsplat > .hsnum { display: block; image-rendering: pixelated; }
+  #rsCross { position: fixed; width: 28px; height: 28px; z-index: 6; pointer-events: none; transform: translate(-50%, -50%); background-repeat: no-repeat; background-position: center; display: none; }
+  /* Top-left hover text: white action + coloured target (b12_full bold + shadow). */
+  #rsHover { position: fixed; top: 26px; left: 14px; z-index: 6; pointer-events: none; display: none;
+    font: 700 16px Helvetica, Arial, sans-serif; text-shadow: 1.5px 1.5px 0 #000; }
+  /* 317 "Choose Option" menu: #5d5447 body, black title bar, tan frame, b12_full bold options. */
+  #rsMenu { position: fixed; z-index: 20; min-width: 96px; display: none; padding: 0;
+    background: #5d5447; border: 1px solid #968d5d; color: #fff; font: 700 13px Helvetica, Arial, sans-serif;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.7); user-select: none; }
+  #rsMenu .hdr { padding: 2px 5px 3px; color: #5d5447; background: #000; font-weight: 700; }
+  #rsMenu .opt { padding: 1px 5px; cursor: pointer; white-space: nowrap; color: #fff; text-shadow: 1px 1px 0 #000; line-height: 16px; }
+  #rsMenu .opt:hover, #rsMenu .opt:hover * { color: #ffff00; }
+  /* Fixed-mode inventory/equipment panel (bottom-right), built from real 317 media sprites. */
+  #rsPanel { position: fixed; right: 8px; bottom: 8px; z-index: 8; width: 190px; user-select: none;
+    background: #1c1813; border: 2px solid #0d0b08; box-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+  .rsTabRow { display: flex; background: #2b2419; }
+  .rsTab { flex: 1 1 0; height: 33px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background-repeat: no-repeat; background-position: center; background-size: 100% 100%; }
+  .rsTab.sel { background-image: url(/api/sprite/redstone1/0.png); }
+  .rsTab > img { max-width: 24px; max-height: 24px; image-rendering: pixelated; pointer-events: none; }
+  .rsTab.disabled { opacity: 0.5; cursor: default; }
+  #rsBody { position: relative; width: 190px; height: 261px;
+    background: url(/api/sprite/invback/0.png) center/100% 100% no-repeat; image-rendering: pixelated; }
+  /* Inventory: 28 slots, 4 columns x 7 rows; RS draws no slot borders, items only. */
+  #rsInv { position: absolute; inset: 0; padding: 6px 11px; display: none;
+    grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(7, 1fr); }
+  #rsInv .slot { display: flex; align-items: center; justify-content: center; }
+  #rsInv .slot > img { max-width: 32px; max-height: 32px; image-rendering: pixelated; }
+  /* Real 317 interfaces (equipment/skills/prayer/magic/logout/music) rendered to PNG. */
+  #rsIface { position: absolute; inset: 0; width: 190px; height: 261px;
+    display: none; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud-fps" aria-live="polite"><span>FPS</span> —</div>
+<div id="worldOverlay"></div>
+<div id="rsCross"></div>
+<div id="rsHover"></div>
+<div id="rsMenu"></div>
+<div id="rsPanel">
+  <div id="rsTabsTop" class="rsTabRow"></div>
+  <div id="rsBody">
+    <div id="rsInv"></div>
+    <img id="rsIface" alt="" />
+  </div>
+  <div id="rsTabsBot" class="rsTabRow"></div>
+</div>
+<div id="ui">
+  <h1>RS Sandbox Viewer</h1>
+  <label for="base">Model source</label>
+  <input id="base" type="text" value="377 cache (live API)" readonly style="opacity:0.85;" />
+  <div class="row" style="margin-top:8px;flex-wrap:wrap;">
+    <button id="modeNpc" type="button" style="flex:1 1 30%;font-weight:bold;">NPCs</button>
+    <button id="modeObj" type="button" style="flex:1 1 30%;">Ground Items</button>
+    <button id="modeLoc" type="button" style="flex:1 1 30%;">Objects</button>
+    <button id="modeGfx" type="button" style="flex:1 1 30%;">GFX</button>
+    <button id="modeWorld" type="button" style="flex:1 1 30%;">World</button>
+    <button id="modeCreator" type="button" style="flex:1 1 30%;">Creator</button>
+  </div>
+  <div id="browserPanel">
+    <label for="search">Search</label>
+    <input id="search" type="text" placeholder="filter by name or id" autocomplete="off" />
+    <label for="model">Entry <span id="count" style="color:#9c917d;text-transform:none;letter-spacing:0;"></span></label>
+    <select id="model" size="12" style="height:auto;"><option>(load manifest...)</option></select>
+    <div class="row">
+      <button id="reload">Reload list</button>
+      <button id="spin">Spin: on</button>
+      <button id="wire">Wire: off</button>
+    </div>
+    <div class="row">
+      <button id="anim">Idle: on</button>
+    </div>
+    <div class="row" id="rotRow" style="display:none;">
+      <label style="margin:0;">Rotation</label>
+      <select id="rot" style="flex:1;">
+        <option value="0">0&deg;</option>
+        <option value="1">90&deg;</option>
+        <option value="2">180&deg;</option>
+        <option value="3">270&deg;</option>
+      </select>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="smooth" checked /> Smooth shading (Gouraud)</label>
+    </div>
+  </div>
+  <div id="creatorPanel" style="display:none;">
+    <hr style="border:none;border-top:1px solid #3a342b;margin:12px 0;" />
+    <h1 style="margin-top:0;">NPC Creator</h1>
+    <div class="hint">Build human characters from idk kits, or clone an existing NPC and tweak models / recolours.</div>
+    <div class="row" style="margin-top:8px;">
+      <button id="crModeHuman" type="button" class="tgl-on" style="flex:1;">Human (idk)</button>
+      <button id="crModeNpc" type="button" style="flex:1;">Clone NPC</button>
+    </div>
+    <div id="crHumanPanel">
+    <div class="row" style="margin-top:8px;">
+      <label style="margin:0;">Gender</label>
+      <select id="crGender" style="flex:1;">
+        <option value="0">Male</option>
+        <option value="1" selected>Female</option>
+      </select>
+      <button id="crQueenPreset" type="button" style="flex:1;">Queen preset</button>
+    </div>
+    <label style="margin-top:8px;">Body part</label>
+    <div id="crPartTabs" class="row" style="flex-wrap:wrap;gap:4px;margin-top:4px;"></div>
+    <label for="crSearch" style="margin-top:8px;">Search parts</label>
+    <input id="crSearch" type="text" placeholder="head, crown, kit id, model id…" autocomplete="off" />
+    <select id="crKitList" size="10" style="width:100%;margin-top:4px;height:auto;"></select>
+    <div id="crKitSel" class="hint" style="margin-top:4px;">Pick a part tab, then click a kit.</div>
+    <div class="row" style="margin-top:6px;">
+      <button id="crPreviewKit" type="button" style="flex:1;">Preview kit alone</button>
+      <button id="crPreviewFull" type="button" style="flex:1;">Preview full NPC</button>
+    </div>
+    <label style="margin-top:8px;">Colours</label>
+    <div id="crColorControls"></div>
+    <label style="margin-top:8px;">Extra models (crown, cape…)</label>
+    <input id="crExtra" type="text" placeholder="model ids: 1234,5678" />
+    <label for="crExtraSearch" style="margin-top:6px;">Find NPC parts to attach</label>
+    <input id="crExtraSearch" type="text" placeholder="search NPC name (e.g. crown, golem)" />
+    <select id="crExtraNpcList" size="4" style="width:100%;margin-top:4px;"></select>
+    </div>
+    <div id="crNpcPanel" style="display:none;">
+      <label for="crNpcSearch" style="margin-top:8px;">Search NPC to clone</label>
+      <input id="crNpcSearch" type="text" placeholder="name or id (e.g. sigrid, 2578)" autocomplete="off" />
+      <select id="crNpcList" size="8" style="width:100%;margin-top:4px;"></select>
+      <div id="crNpcSel" class="hint" style="margin-top:4px;">Pick an NPC — each attached model and its colour slots load below.</div>
+      <label style="margin-top:8px;">Model parts</label>
+      <div id="crNpcModelParts" class="hint">No NPC loaded.</div>
+      <div class="row" style="margin-top:4px;">
+        <input id="crNpcAddModel" type="text" placeholder="add model id" style="flex:1;" />
+        <button id="crNpcAddModelBtn" type="button">Add</button>
+      </div>
+      <label style="margin-top:8px;">Recolours per part</label>
+      <div class="hint" style="margin-top:2px;">Change the destination palette index to recolour that slot (e.g. whip → white).</div>
+      <div id="crNpcRecolors"></div>
+      <div class="row" style="margin-top:6px;">
+        <button id="crNpcPreview" type="button" style="flex:1;">Preview full NPC</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button id="crApplyPlayer" type="button" style="flex:1;">Use as world player</button>
+      <button id="crPlaceWorld" type="button" style="flex:1;">Place in world</button>
+    </div>
+    <div id="crStatus" class="hint" style="margin-top:6px;">Loading kit catalog…</div>
+  </div>
+  <div id="worldPanel" style="display:none;">
+    <hr style="border:none;border-top:1px solid #3a342b;margin:12px 0;" />
+    <h1 style="margin-top:0;">World editor</h1>
+    <div id="worldStatus" class="hint">Left-click a tile to walk. Pick a mode below to edit.</div>
+
+    <label>Tools</label>
+    <div class="row">
+      <button id="placeBtn" style="flex:1;">Place</button>
+      <button id="paintBtn" style="flex:1;">Paint</button>
+      <button id="deleteBtn" style="flex:1;">Delete</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="undoBtn" style="flex:1;" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="redoBtn" style="flex:1;" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="runBtn" style="flex:1;">Run: off</button>
+      <button id="camLockBtn" style="flex:1;">Camera: free</button>
+    </div>
+
+    <details id="placeSection" open>
+      <summary>Place scenery / NPCs</summary>
+      <div class="row" style="margin-top:6px;">
+        <button id="placeKindLoc" type="button" class="tgl-on" style="flex:1;">Scenery</button>
+        <button id="placeKindNpc" type="button" style="flex:1;">NPCs</button>
+      </div>
+      <div id="placeHint" class="hint" style="margin-top:6px;">
+        Pick an entry, hover a tile to preview, <b>scroll the mouse wheel to rotate</b>, then click to place.
+      </div>
+      <div id="placeLocPanel">
+        <div class="row" style="margin-top:6px;">
+          <input id="worldLocSearch" type="text" placeholder="search scenery by name or id" style="flex:1;" />
+          <select id="worldLocRot" title="Placement rotation" style="width:64px;">
+            <option value="0">0°</option><option value="1">90°</option>
+            <option value="2">180°</option><option value="3">270°</option>
+          </select>
+        </div>
+        <select id="worldLocList" size="6" style="width:100%;margin-top:4px;"></select>
+        <div id="worldLocSel" class="hint" style="margin-top:3px;">No scenery selected.</div>
+      </div>
+      <div id="placeNpcPanel" style="display:none;">
+        <div class="row" style="margin-top:6px;">
+          <input id="worldNpcSearch" type="text" placeholder="search NPC by name or id" style="flex:1;" />
+          <select id="worldNpcRot" title="Facing rotation" style="width:64px;">
+            <option value="0">0°</option><option value="1">90°</option>
+            <option value="2">180°</option><option value="3">270°</option>
+          </select>
+        </div>
+        <select id="worldNpcList" size="6" style="width:100%;margin-top:4px;"></select>
+        <div id="worldNpcSel" class="hint" style="margin-top:3px;">No NPC selected.</div>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <button id="clearPlaced" style="flex:1;">Clear placed</button>
+      </div>
+    </details>
+
+    <details id="paintSection">
+      <summary>Paint tiles</summary>
+      <div class="row" style="margin-top:6px;align-items:center;">
+        <label style="margin:0;flex:0 0 auto;font-size:11px;">Colour</label>
+        <input id="paintColor" type="color" value="#8a5a2b" title="Tile colour" style="width:34px;height:24px;padding:0;border:1px solid #3a342b;background:#1b1812;" />
+        <button id="resetTilesBtn" style="flex:1;">Reset tiles</button>
+      </div>
+      <div style="margin-top:4px;">
+        <label style="font-size:11px;">Tile texture <span id="paintTexLabel" style="color:#9c917d;">(none — colour)</span></label>
+        <div id="paintTexGrid" style="display:flex;flex-wrap:wrap;gap:3px;max-height:104px;overflow-y:auto;margin-top:3px;padding:3px;border:1px solid #3a342b;background:#1b1812;"></div>
+      </div>
+    </details>
+
+    <details id="raveSection">
+      <summary>Rave (east of chess board)</summary>
+      <div class="hint" style="margin-top:6px;">Dance floor with spotlights and a 3D YouTube stage cube. Walk onto the floor to dance, jig, and headbang.</div>
+      <div class="row" style="margin-top:6px;">
+        <button id="raveStartBtn" style="flex:1;">Setup rave</button>
+        <button id="raveStopBtn" style="flex:1;">Remove rave</button>
+      </div>
+      <label style="margin-top:6px;">YouTube video ID (stage cube)</label>
+      <input id="raveYoutubeEl" type="text" value="5lthiQoQiRA" placeholder="Video id or YouTube URL" />
+      <label style="margin-top:4px;">Start at (seconds)</label>
+      <input id="raveYoutubeStartEl" type="number" value="324" min="0" step="1" />
+      <div id="raveStatusEl" class="hint" style="margin-top:4px;">Not started.</div>
+    </details>
+
+    <details id="chessSection">
+      <summary>Chess</summary>
+      <div class="hint" style="margin-top:6px;">8×8 board with RS NPC pieces. Click a piece, then a square. Castling moves the king onto the rook square (O-O / O-O-O).</div>
+      <div class="row" style="margin-top:6px;">
+        <button id="chessStartBtn" style="flex:1;">Setup board</button>
+        <button id="chessStopBtn" style="flex:1;">Remove board</button>
+      </div>
+      <div id="chessStatusEl" class="hint" style="margin-top:4px;">Not started.</div>
+    </details>
+
+    <details id="mapSection">
+      <summary>Save / load map</summary>
+      <div class="row" style="margin-top:6px;">
+        <button id="exportMapBtn" style="flex:1;">Export map</button>
+        <button id="importMapBtn" style="flex:1;">Import map</button>
+        <input id="importMapFile" type="file" accept="application/json,.json" style="display:none;" />
+      </div>
+    </details>
+
+    <details id="combatSection">
+      <summary>Combat test</summary>
+      <div id="combatStatus" class="hint" style="margin-top:6px;">Click a dummy to target it, then cast.</div>
+      <label style="margin-top:8px;">Magic</label>
+      <div class="row" style="flex-wrap:wrap;gap:6px;">
+        <button class="castBtn" data-spell="fire_wave" style="flex:1 1 45%;">Fire Wave</button>
+        <button class="castBtn" data-spell="ice_barrage" style="flex:1 1 45%;">Ice Barrage</button>
+        <button class="castBtn" data-spell="fire_blast" style="flex:1 1 45%;">Fire Blast</button>
+        <button class="castBtn" data-spell="ice_blitz" style="flex:1 1 45%;">Ice Blitz</button>
+      </div>
+      <label style="margin-top:8px;">Ranged</label>
+      <div class="row" style="flex-wrap:wrap;gap:6px;">
+        <button class="shootBtn" data-arrow="bronze" style="flex:1 1 45%;">Bronze arrow</button>
+        <button class="shootBtn" data-arrow="rune" style="flex:1 1 45%;">Rune arrow</button>
+        <button class="shootBtn" data-arrow="adamant" style="flex:1 1 45%;">Adamant arrow</button>
+        <button class="shootBtn" data-arrow="cannon" style="flex:1 1 45%;">Crossbow bolt</button>
+      </div>
+      <div class="row">
+        <button id="addDummy" style="flex:1;">Add dummy</button>
+        <button id="clearDummies" style="flex:1;">Clear dummies</button>
+      </div>
+    </details>
+
+    <details id="playerSection">
+      <summary>Player appearance</summary>
+      <div class="row" style="margin-top:6px;">
+        <label style="margin:0;">Gender</label>
+        <select id="pGender" style="flex:1;">
+          <option value="0">Male</option>
+          <option value="1">Female</option>
+        </select>
+      </div>
+      <div id="kitControls"></div>
+      <div id="colorControls"></div>
+    </details>
+  </div>
+  <details id="soundSection">
+    <summary>Sounds (377)</summary>
+    <label for="soundSearch">Search sounds</label>
+    <input id="soundSearch" type="text" placeholder="name or id (e.g. sword_hit)" autocomplete="off" />
+    <label for="soundId">Sound ID <span id="soundCount" style="color:#9c917d;text-transform:none;letter-spacing:0;"></span></label>
+    <input id="soundId" type="number" min="0" max="2726" value="12" />
+    <select id="soundList" size="6" style="height:auto;"></select>
+    <div class="row">
+      <button id="playSound">Play</button>
+      <button id="stopSound">Stop</button>
+    </div>
+    <div id="soundStatus" style="margin-top:6px;font-size:11px;color:#9c917d;">Audio: 377 cache (sounds.dat) — wiki names are labels only, never MP3</div>
+    <div id="soundWarn" style="display:none;margin-top:6px;padding:8px;background:#3a2018;border:1px solid #8a4030;border-radius:5px;font-size:11px;color:#f0a080;"></div>
+  </details>
+  <div id="drop" style="display:none;">or drag a .glb file here</div>
+  <div id="status">Starting...</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/addons/"
+  }
+}
+</script>
+
+<script>
+window.addEventListener('error', (e) => {
+  const el = document.getElementById('status');
+  if (!el || window.__rs) return;
+  if (e.message) el.textContent = 'Viewer error:\n' + e.message;
+});
+setTimeout(() => {
+  const el = document.getElementById('status');
+  if (el && el.textContent === 'Starting...' && !window.__rs) {
+    el.textContent = 'Viewer failed to start (check console). Hard-refresh or use serve_viewer on :8848.';
+  }
+}, 12000);
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
+import { createChessWorld } from './chess_world.js';
+import { createRaveWorld } from './rave_world.js';
+import { createNpcCreator } from './npc_creator.js';
+
+const statusEl = document.getElementById('status');
+const modelSel = document.getElementById('model');
+const searchEl = document.getElementById('search');
+const countEl = document.getElementById('count');
+const baseEl = document.getElementById('base');
+
+const NPC_MANIFEST_URL = '/api/npcs.json';
+const OBJECT_MANIFEST_URL = '/api/objects.json';
+const LOC_MANIFEST_URL = '/api/locs.json';
+const SPOT_MANIFEST_URL = '/api/spotanims.json';
+const IDK_MANIFEST_URL = '/api/idk.json';
+const IDK_KITS_MANIFEST_URL = '/api/idk-kits.json';
+const customGlbUrl = () => {
+  if (npcCreator.creatorMode === 'npc' && npcCreator.baseNpcId) {
+    return npcCreator.npcCustomGlbUrl();
+  }
+  return npcCreator.customGlbUrl();
+};
+const TEXTURE_MANIFEST_URL = '/api/textures.json';
+const npcGlbUrl = (id) => `/api/npc/${id}.glb`;
+const objectGlbUrl = (id) => `/api/object/${id}.glb`;
+const locGlbUrl = (id, rot) => `/api/loc/${id}.glb?rot=${rot || 0}`;
+const spotGlbUrl = (id) => `/api/spotanim/${id}.glb`;
+const modeNpcBtn = document.getElementById('modeNpc');
+const modeObjBtn = document.getElementById('modeObj');
+const modeLocBtn = document.getElementById('modeLoc');
+const modeGfxBtn = document.getElementById('modeGfx');
+const modeWorldBtn = document.getElementById('modeWorld');
+const modeCreatorBtn = document.getElementById('modeCreator');
+const rotRow = document.getElementById('rotRow');
+const rotSel = document.getElementById('rot');
+let viewMode = 'npc';
+let allNpcs = [];
+let npcById = {};
+let allObjects = [];
+let allLocs = [];
+let locById = {};
+let allTextures = [];
+const texCache = {};   // id -> THREE.Texture for ground tiles
+let tilePaint = {};    // tileIndex -> { color, tex } so the map can be exported
+let allSpotanims = [];
+let selectedLoc = null;
+let selectedNpc = null;
+let placeKind = 'loc'; // 'loc' | 'npc'
+const spinBtn = document.getElementById('spin');
+const wireBtn = document.getElementById('wire');
+const animBtn = document.getElementById('anim');
+const smoothEl = document.getElementById('smooth');
+const soundSearchEl = document.getElementById('soundSearch');
+const soundIdEl = document.getElementById('soundId');
+const soundListEl = document.getElementById('soundList');
+const soundCountEl = document.getElementById('soundCount');
+const soundStatusEl = document.getElementById('soundStatus');
+const playSoundBtn = document.getElementById('playSound');
+const stopSoundBtn = document.getElementById('stopSound');
+const dropEl = document.getElementById('drop');
+const soundAudio = new Audio();
+soundAudio.volume = 1;
+let allSounds = [];
+let soundApiOk = false;
+const SOUND_API_PREFIX = '/api/sound/';
+const soundWarnEl = document.getElementById('soundWarn');
+
+function soundApiUrl(id) {
+  return `${SOUND_API_PREFIX}${id}.wav`;
+}
+
+async function assertCacheWav(res, blob) {
+  const src = (res.headers.get('x-rs-audio-source') || '').toLowerCase();
+  if (src && src !== 'cache-synth') {
+    throw new Error('refusing non-cache audio source: ' + src);
+  }
+  const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  const riff = String.fromCharCode(head[0], head[1], head[2], head[3]);
+  if (riff !== 'RIFF') throw new Error('not a cache-synthesized WAV');
+}
+
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+app.appendChild(renderer.domElement);
+
+const cssScene = new THREE.Scene();
+const cssRenderer = new CSS3DRenderer();
+cssRenderer.domElement.style.position = 'absolute';
+cssRenderer.domElement.style.top = '0';
+cssRenderer.domElement.style.left = '0';
+renderer.domElement.style.position = 'absolute';
+renderer.domElement.style.top = '0';
+renderer.domElement.style.left = '0';
+renderer.domElement.style.zIndex = '2';
+cssRenderer.domElement.style.pointerEvents = 'none';
+cssRenderer.domElement.style.zIndex = '1';
+app.appendChild(cssRenderer.domElement);
+cssRenderer.setSize(window.innerWidth, window.innerHeight);
+
+const _listenerFwd = new THREE.Vector3();
+const _occluderMeshes = [];
+const _occluderExcluded = new Set();
+
+function gatherWorldOccluders(excludeRoot) {
+  _occluderMeshes.length = 0;
+  _occluderExcluded.clear();
+  if (excludeRoot) {
+    excludeRoot.traverse(o => _occluderExcluded.add(o));
+  }
+  const addRoot = (root) => {
+    if (!root) return;
+    root.traverse(o => {
+      if (o.isMesh && o.visible && o !== pickPlane && !_occluderExcluded.has(o)) {
+        _occluderMeshes.push(o);
+      }
+    });
+  };
+  addRoot(worldGroup);
+  addRoot(player);
+  for (const obj of placedObjects) addRoot(obj);
+  for (const d of dummies) addRoot(d.obj);
+  return _occluderMeshes;
+}
+
+/** Only dynamic props + player block the CSS3D screen (not floor / rave truss). */
+function gatherVideoOccluders(excludeRoot) {
+  _occluderMeshes.length = 0;
+  _occluderExcluded.clear();
+  if (excludeRoot) {
+    excludeRoot.traverse(o => _occluderExcluded.add(o));
+  }
+  const addRoot = (root) => {
+    if (!root) return;
+    root.traverse(o => {
+      if (o.isMesh && o.visible && o !== pickPlane && !_occluderExcluded.has(o)) {
+        _occluderMeshes.push(o);
+      }
+    });
+  };
+  addRoot(player);
+  if (chessWorld?.isActive()) chessWorld.forEachPiece?.((obj) => addRoot(obj));
+  for (const obj of placedObjects) addRoot(obj);
+  for (const d of dummies) addRoot(d.obj);
+  return _occluderMeshes;
+}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14110e);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 100000);
+camera.position.set(300, 300, 300);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// Neutral, even lighting. A coloured/over-bright rig tints the near-black
+// vertex colours (e.g. the King Black Dragon body, RS HSL 11140) toward olive;
+// neutral grey sky/ground and a softer key keep darks reading as dark.
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 0.9);
+scene.add(hemiLight);
+const key = new THREE.DirectionalLight(0xffffff, 1.5);
+key.position.set(1, 1.6, 1);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+fill.position.set(-1, 0.4, -0.8);
+scene.add(fill);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+scene.add(ambientLight);
+
+const grid = new THREE.GridHelper(2000, 40, 0x4a4336, 0x2a241c);
+scene.add(grid);
+
+const loader = new GLTFLoader();
+const clock = new THREE.Clock();
+const fpsEl = document.getElementById('hud-fps');
+let fpsSmoothed = 0;
+let current = null;
+let mixer = null;
+let spinning = true;
+let wireframe = false;
+let smoothShading = true;
+let animating = true;
+window.__rs = { get current() { return current; }, get mixer() { return mixer; }, THREE, camera, controls, render: () => renderer.render(scene, camera) };
+
+function clearCurrent() {
+  if (mixer) { mixer.stopAllAction(); mixer = null; }
+  if (current) { scene.remove(current); current.traverse(o => { if (o.geometry) o.geometry.dispose(); }); current = null; }
+}
+
+function frameObject(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 100;
+  controls.target.copy(center);
+  const dist = maxDim * 2.2;
+  camera.position.set(center.x + dist * 0.7, center.y + dist * 0.5, center.z + dist * 0.7);
+  camera.near = maxDim / 100; camera.far = maxDim * 100; camera.updateProjectionMatrix();
+  grid.position.y = box.min.y;
+  return { size, tris: countTris(obj) };
+}
+
+function countTris(obj) {
+  let n = 0;
+  obj.traverse(o => { if (o.isMesh && o.geometry) { const g = o.geometry; n += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
+  return n;
+}
+
+function geometryHasVertexAlpha(geometry) {
+  const col = geometry?.attributes?.color;
+  if (!col || col.itemSize < 4) return false;
+  const arr = col.array;
+  for (let i = 3; i < arr.length; i += col.itemSize) {
+    if (arr[i] < 0.98) return true;
+  }
+  return false;
+}
+
+function rsMaterialFlags(name, geometry) {
+  const pMatch = /_p(\d+)/.exec(name || '');
+  const aMatch = /_a(\d+)/.exec(name || '');
+  const priority = pMatch ? parseInt(pMatch[1], 10) : 0;
+  const transparent = aMatch !== null || geometryHasVertexAlpha(geometry);
+  return { priority, transparent };
+}
+
+function enableMorphMaterials(mesh) {
+  const hasMorph = mesh.morphTargetInfluences && mesh.morphTargetInfluences.length > 0;
+  if (!hasMorph) return;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const m of mats) {
+    if (!m) continue;
+    m.morphTargets = true;
+    m.needsUpdate = true;
+  }
+}
+
+function applyWire(obj) {
+  obj.traverse(o => {
+    if (!o.isMesh) return;
+    enableMorphMaterials(o);
+    let mats = Array.isArray(o.material) ? o.material.slice() : [o.material];
+    let changed = false;
+    for (let i = 0; i < mats.length; i++) {
+      let m = mats[i];
+      const { priority, transparent } = rsMaterialFlags(m.name, o.geometry);
+      if (transparent && (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) {
+        // PBR ignores vertex alpha on COLOR_0; RS uses flat blended vertex colours.
+        m = new THREE.MeshBasicMaterial({
+          map: m.map,
+          vertexColors: true,
+          transparent: true,
+          depthWrite: false,
+          depthTest: true,
+          side: THREE.DoubleSide,
+          wireframe,
+          morphTargets: !!(o.morphTargetInfluences && o.morphTargetInfluences.length),
+        });
+        mats[i] = m;
+        changed = true;
+      } else {
+        m.wireframe = wireframe;
+        m.flatShading = !smoothShading;
+        m.vertexColors = true;
+        m.depthTest = true;
+        if (transparent) {
+          m.transparent = true;
+          m.depthWrite = false;
+          m.side = THREE.DoubleSide;
+          m.polygonOffset = false;
+          o.renderOrder = 1000 + priority;
+        } else {
+          m.transparent = false;
+          m.depthWrite = true;
+          m.side = THREE.FrontSide;
+          o.renderOrder = priority;
+          if (priority > 0) {
+            m.polygonOffset = true;
+            m.polygonOffsetFactor = 0;
+            m.polygonOffsetUnits = -priority * 0.12;
+          } else {
+            m.polygonOffset = false;
+          }
+        }
+        m.needsUpdate = true;
+      }
+      if (transparent && m.isMeshBasicMaterial) {
+        o.renderOrder = 1000 + priority;
+      }
+    }
+    if (changed) o.material = Array.isArray(o.material) ? mats : mats[0];
+  });
+}
+
+// Smooth interpolation between RS keyframes, but NEVER on scale tracks: cubic
+// smoothing overshoots and momentarily balloons body parts. Scale stays linear,
+// and quaternion stays on the default slerp (three.js ignores smooth there).
+function tuneClipInterp(clip) {
+  for (const track of clip.tracks) {
+    if (track.name.endsWith('.scale') || track.name.endsWith('.quaternion')) continue;
+    track.setInterpolation(THREE.InterpolateSmooth);
+  }
+}
+
+function onLoaded(gltf, label, meta) {
+  clearCurrent();
+  current = gltf.scene;
+  applyWire(current);
+  scene.add(current);
+  const info = frameObject(current);
+  let animLine = '';
+  if (gltf.animations && gltf.animations.length) {
+    mixer = new THREE.AnimationMixer(current);
+    const clip = gltf.animations[0];
+    tuneClipInterp(clip);
+    const action = mixer.clipAction(clip);
+    if (viewMode === 'gfx') {
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+    } else {
+      action.setLoop(THREE.LoopRepeat);
+    }
+    action.play();
+    action.paused = !animating;
+    let frameCount = 0;
+    current.traverse(o => {
+      if (o.isMesh && o.morphTargetInfluences?.length) {
+        frameCount = Math.max(frameCount, o.morphTargetInfluences.length);
+      }
+    });
+    if (!clip.userData) clip.userData = {};
+    clip.userData.frameCount = frameCount;
+    animLine = `\nanim: ${clip.name} (${clip.duration.toFixed(2)}s, tweened${frameCount ? `, ${frameCount} frames` : ''})`;
+  }
+  const build = meta?.glbBuild ? `\nGLB: ${meta.glbBuild}` : '';
+  statusEl.textContent = `Loaded: ${label}\n${Math.round(info.tris)} triangles\nsize ${info.size.x.toFixed(0)} x ${info.size.y.toFixed(0)} x ${info.size.z.toFixed(0)}${animLine}${build}`;
+}
+
+async function loadURL(url, label) {
+  statusEl.textContent = 'Loading ' + label + ' ...';
+  const bust = (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+  let meta = {};
+  try {
+    const head = await fetch(url + bust, { method: 'HEAD', cache: 'no-store' });
+    meta.glbBuild = head.headers.get('x-rs-glb-build') || '';
+  } catch (_) { /* HEAD optional */ }
+  loader.load(
+    url + bust,
+    g => onLoaded(g, label, meta),
+    undefined,
+    err => { statusEl.textContent = 'ERROR loading ' + label + '\n' + err; console.error(err); }
+  );
+}
+
+function currentCatalog() {
+  if (viewMode === 'gfx') return allSpotanims;
+  if (viewMode === 'obj') return allObjects;
+  if (viewMode === 'loc') return allLocs;
+  return allNpcs;
+}
+
+function entryGlbUrl(n) {
+  if (viewMode === 'gfx') return spotGlbUrl(n.id);
+  if (viewMode === 'obj') return objectGlbUrl(n.id);
+  if (viewMode === 'loc') return locGlbUrl(n.id, rotSel.value);
+  return n.file || npcGlbUrl(n.id);
+}
+
+function renderOptions(filter) {
+  const catalog = currentCatalog();
+  const q = (filter || '').trim().toLowerCase();
+  const matches = !q ? catalog : catalog.filter(n => {
+    const name = (n.name || 'unnamed').toLowerCase();
+    return name.includes(q) || String(n.id).includes(q) || String(n.modelId || '').includes(q);
+  });
+  modelSel.innerHTML = '';
+  matches.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = entryGlbUrl(n);
+    opt.dataset.id = n.id;
+    const anim = n.animated ? ` *${n.animFrames}f` : '';
+    const tris = n.triangleCount != null ? `${n.triangleCount} tris` : 'cache';
+    const extra = n.modelId != null && viewMode !== 'npc' ? ` m${n.modelId}` : '';
+    opt.textContent = `${n.name || 'unnamed'} (#${n.id}${extra}, ${tris}${anim})`;
+    modelSel.appendChild(opt);
+  });
+  countEl.textContent = `(${matches.length}/${catalog.length})`;
+  return matches.length;
+}
+
+const worldPanel = document.getElementById('worldPanel');
+const browserPanel = document.getElementById('browserPanel');
+const creatorPanel = document.getElementById('creatorPanel');
+const npcCreator = createNpcCreator();
+let playerUsesCustom = false;
+let creatorReady = false;
+
+const crGender = document.getElementById('crGender');
+const crPartTabs = document.getElementById('crPartTabs');
+const crSearch = document.getElementById('crSearch');
+const crKitList = document.getElementById('crKitList');
+const crKitSel = document.getElementById('crKitSel');
+const crColorControls = document.getElementById('crColorControls');
+const crExtra = document.getElementById('crExtra');
+const crExtraSearch = document.getElementById('crExtraSearch');
+const crExtraNpcList = document.getElementById('crExtraNpcList');
+const crStatus = document.getElementById('crStatus');
+const crModeHuman = document.getElementById('crModeHuman');
+const crModeNpc = document.getElementById('crModeNpc');
+const crHumanPanel = document.getElementById('crHumanPanel');
+const crNpcPanel = document.getElementById('crNpcPanel');
+const crNpcSearch = document.getElementById('crNpcSearch');
+const crNpcList = document.getElementById('crNpcList');
+const crNpcSel = document.getElementById('crNpcSel');
+const crNpcModelParts = document.getElementById('crNpcModelParts');
+const crNpcAddModel = document.getElementById('crNpcAddModel');
+const crNpcAddModelBtn = document.getElementById('crNpcAddModelBtn');
+const crNpcRecolors = document.getElementById('crNpcRecolors');
+const crNpcPreview = document.getElementById('crNpcPreview');
+const crQueenPreset = document.getElementById('crQueenPreset');
+const crPreviewKit = document.getElementById('crPreviewKit');
+const crPreviewFull = document.getElementById('crPreviewFull');
+const crApplyPlayer = document.getElementById('crApplyPlayer');
+const crPlaceWorld = document.getElementById('crPlaceWorld');
+
+function setViewMode(mode) {
+  const prev = viewMode;
+  viewMode = mode;
+  modeNpcBtn.style.fontWeight = mode === 'npc' ? 'bold' : 'normal';
+  modeObjBtn.style.fontWeight = mode === 'obj' ? 'bold' : 'normal';
+  modeLocBtn.style.fontWeight = mode === 'loc' ? 'bold' : 'normal';
+  modeGfxBtn.style.fontWeight = mode === 'gfx' ? 'bold' : 'normal';
+  modeWorldBtn.style.fontWeight = mode === 'world' ? 'bold' : 'normal';
+  modeCreatorBtn.style.fontWeight = mode === 'creator' ? 'bold' : 'normal';
+  animBtn.style.display = (mode === 'obj' || mode === 'world') ? 'none' : '';
+  rotRow.style.display = mode === 'loc' ? '' : 'none';
+  worldPanel.style.display = mode === 'world' ? '' : 'none';
+  creatorPanel.style.display = mode === 'creator' ? '' : 'none';
+  browserPanel.style.display = (mode === 'world' || mode === 'creator') ? 'none' : '';
+  searchEl.parentElement.style.display = mode === 'creator' ? 'none' : '';
+  modelSel.parentElement.style.display = mode === 'creator' ? 'none' : '';
+  document.querySelector('#browserPanel .row')?.style && document.querySelectorAll('#browserPanel > .row').forEach(el => {
+    el.style.display = mode === 'creator' ? 'none' : '';
+  });
+  document.getElementById('rotRow') && (document.getElementById('rotRow').style.display = mode === 'loc' ? '' : 'none');
+  document.querySelector('#browserPanel label[for="smooth"]')?.closest('.row')?.style &&
+    (document.querySelector('#browserPanel label[for="smooth"]').closest('.row').style.display = mode === 'creator' ? 'none' : '');
+
+  if (mode === 'world') {
+    enterWorld();
+    return;
+  }
+  if (mode === 'creator') {
+    if (prev === 'world') exitWorld();
+    initCreatorMode();
+    return;
+  }
+  if (prev === 'world') exitWorld();
+  searchEl.placeholder = mode === 'gfx' ? 'spotanim id or model id'
+    : mode === 'obj' ? 'ground item name or id'
+    : mode === 'loc' ? 'scenery name or id'
+    : 'filter by name or id';
+  renderOptions(searchEl.value);
+  if (modelSel.options.length) {
+    modelSel.selectedIndex = Math.max(0, modelSel.selectedIndex);
+    loadURL(modelSel.value, modelSel.options[modelSel.selectedIndex].textContent);
+  }
+}
+
+async function fetchManifestJson(url, label) {
+  try {
+    const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return { ok: false, error: `${label} HTTP ${res.status}`, data: null };
+    return { ok: true, data: await res.json() };
+  } catch (e) {
+    return { ok: false, error: `${label}: ${e}`, data: null };
+  }
+}
+
+async function loadManifest() {
+  statusEl.textContent = 'Fetching lists from cache API...';
+  const warnings = [];
+  const [npcR, objR, locR, spotR, texR] = await Promise.all([
+    fetchManifestJson(NPC_MANIFEST_URL, 'npcs'),
+    fetchManifestJson(OBJECT_MANIFEST_URL, 'objects'),
+    fetchManifestJson(LOC_MANIFEST_URL, 'locs'),
+    fetchManifestJson(SPOT_MANIFEST_URL, 'spotanims'),
+    fetchManifestJson(TEXTURE_MANIFEST_URL, 'textures'),
+  ]);
+  if (texR.ok) {
+    allTextures = (texR.data.textures || []).slice();
+    populateTextureSelect();
+  }
+
+  if (npcR.ok) {
+    allNpcs = (npcR.data.npcs || []).slice().sort((a, b) => {
+      const an = (a.name || '').toLowerCase(), bn = (b.name || '').toLowerCase();
+      return an < bn ? -1 : an > bn ? 1 : (a.id - b.id);
+    });
+    npcById = {};
+    for (const n of allNpcs) npcById[n.id] = n;
+  } else {
+    allNpcs = [];
+    npcById = {};
+    warnings.push(npcR.error);
+  }
+
+  if (objR.ok) {
+    allObjects = (objR.data.objects || []).slice().sort((a, b) => {
+      const an = (a.name || '').toLowerCase(), bn = (b.name || '').toLowerCase();
+      return an < bn ? -1 : an > bn ? 1 : (a.id - b.id);
+    });
+  } else {
+    allObjects = [];
+    warnings.push(objR.error);
+  }
+
+  if (locR.ok) {
+    allLocs = (locR.data.locs || []).slice().sort((a, b) => {
+      const an = (a.name || '').toLowerCase(), bn = (b.name || '').toLowerCase();
+      return an < bn ? -1 : an > bn ? 1 : (a.id - b.id);
+    });
+    locById = {};
+    for (const l of allLocs) locById[l.id] = l;
+  } else {
+    allLocs = [];
+    warnings.push(locR.error);
+  }
+
+  if (spotR.ok) {
+    allSpotanims = (spotR.data.spotanims || []).slice().sort((a, b) => a.id - b.id);
+  } else {
+    allSpotanims = [];
+    warnings.push(spotR.error);
+  }
+
+  if (!allNpcs.length && !allObjects.length && !allLocs.length && !allSpotanims.length) {
+    statusEl.textContent = 'Could not load any cache lists.\n'
+      + warnings.join('\n')
+      + '\n\nRun: python -m src.cli.serve_viewer (not http.server)';
+    return;
+  }
+
+  if ((viewMode === 'obj' && !allObjects.length) || (viewMode === 'loc' && !allLocs.length)) setViewMode('npc');
+  modeObjBtn.disabled = allObjects.length === 0;
+  modeObjBtn.title = allObjects.length === 0
+    ? 'Ground Items API unavailable — restart serve_viewer.bat (old server on :8848?)'
+    : '';
+  modeLocBtn.disabled = allLocs.length === 0;
+  modeLocBtn.title = allLocs.length === 0
+    ? 'Objects (scenery) API unavailable — restart serve_viewer.bat'
+    : '';
+  let status = `Cache OK: ${allNpcs.length} NPCs, ${allObjects.length} ground items, `
+    + `${allLocs.length} objects, ${allSpotanims.length} spotanims.`;
+  if (warnings.length) {
+    status += '\n(unavailable: ' + warnings.join('; ') + ')';
+  }
+  statusEl.textContent = status;
+  if (viewMode !== 'world') {
+    if (renderOptions(searchEl.value)) {
+      modelSel.selectedIndex = 0;
+      loadURL(modelSel.value, modelSel.options[0].textContent);
+    }
+  }
+  await loadIdkManifest();
+}
+
+modeNpcBtn.addEventListener('click', () => setViewMode('npc'));
+modeObjBtn.addEventListener('click', () => setViewMode('obj'));
+modeLocBtn.addEventListener('click', () => setViewMode('loc'));
+modeGfxBtn.addEventListener('click', () => setViewMode('gfx'));
+modeWorldBtn.addEventListener('click', () => setViewMode('world'));
+modeCreatorBtn.addEventListener('click', () => setViewMode('creator'));
+
+function onSelectEntry() {
+  const opt = modelSel.options[modelSel.selectedIndex];
+  if (!opt) return;
+  if (viewMode === 'loc') {
+    const id = parseInt(opt.dataset.id, 10);
+    const meta = locById[id] || {};
+    selectedLoc = {
+      id,
+      rot: parseInt(rotSel.value, 10) || 0,
+      name: meta.name || `loc_${id}`,
+      actions: meta.actions || [],
+      examine: meta.examine || '',
+    };
+  }
+  loadURL(opt.value, opt.textContent);
+}
+
+modelSel.addEventListener('change', onSelectEntry);
+rotSel.addEventListener('change', () => {
+  if (viewMode === 'loc') { renderOptions(searchEl.value); onSelectEntry(); }
+});
+searchEl.addEventListener('input', () => renderOptions(searchEl.value));
+searchEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && modelSel.options.length) {
+    modelSel.selectedIndex = 0;
+    loadURL(modelSel.value, modelSel.options[0].textContent);
+  }
+});
+document.getElementById('reload').addEventListener('click', loadManifest);
+spinBtn.addEventListener('click', () => { spinning = !spinning; spinBtn.textContent = 'Spin: ' + (spinning ? 'on' : 'off'); });
+wireBtn.addEventListener('click', () => { wireframe = !wireframe; wireBtn.textContent = 'Wire: ' + (wireframe ? 'on' : 'off'); if (current) applyWire(current); });
+animBtn.addEventListener('click', () => { animating = !animating; animBtn.textContent = 'Idle: ' + (animating ? 'on' : 'off'); if (mixer) mixer._actions.forEach(a => { a.paused = !animating; }); });
+smoothEl.addEventListener('change', () => {
+  smoothShading = smoothEl.checked;
+  if (current) applyWire(current);
+});
+
+window.addEventListener('dragover', e => { e.preventDefault(); });
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  loadURL(url, file.name);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  cssRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function activeAnimFrame() {
+  if (!mixer || !animating || !current || !mixer._actions?.length) return null;
+  const action = mixer._actions[0];
+  const total = action.getClip()?.userData?.frameCount;
+  if (!total) return null;
+  let mesh = null;
+  current.traverse(o => {
+    if (o.isMesh && o.morphTargetInfluences?.length) mesh = o;
+  });
+  if (!mesh) return null;
+  let idx = 0;
+  let best = -1;
+  for (let i = 0; i < mesh.morphTargetInfluences.length; i++) {
+    const w = mesh.morphTargetInfluences[i];
+    if (w > best) {
+      best = w;
+      idx = i;
+    }
+  }
+  return { current: idx + 1, total };
+}
+
+function updateFpsHud(dt) {
+  if (dt <= 0) return;
+  const instant = 1 / dt;
+  fpsSmoothed = fpsSmoothed ? fpsSmoothed * 0.92 + instant * 0.08 : instant;
+  const fps = Math.round(fpsSmoothed);
+  const anim = activeAnimFrame();
+  const extra = anim ? ` · <span>frame</span> ${anim.current}/${anim.total}` : '';
+  fpsEl.innerHTML = `<span>FPS</span> ${fps}${extra}`;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  updateFpsHud(dt);
+  if (worldActive) {
+    updateWorld(dt);
+  } else {
+    if (mixer && animating) mixer.update(dt);
+    if (spinning && current) current.rotation.y += 0.01;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  cssRenderer.render(cssScene, camera);
+}
+function renderSoundOptions(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const matches = !q ? allSounds : allSounds.filter(s => {
+    const name = (s.name || '').toLowerCase();
+    return name.includes(q) || String(s.id).includes(q);
+  });
+  soundListEl.innerHTML = '';
+  const show = matches.slice(0, 500);
+  show.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = String(s.id);
+    opt.textContent = `${s.name} (#${s.id})`;
+    soundListEl.appendChild(opt);
+  });
+  if (matches.length > 500) {
+    const more = document.createElement('option');
+    more.disabled = true;
+    more.textContent = `… ${matches.length - 500} more (refine search)`;
+    soundListEl.appendChild(more);
+  }
+  soundCountEl.textContent = `(${show.length}/${allSounds.length})`;
+  return matches;
+}
+
+function showSoundWarn(msg) {
+  soundWarnEl.style.display = 'block';
+  soundWarnEl.textContent = msg;
+}
+
+function hideSoundWarn() {
+  soundWarnEl.style.display = 'none';
+}
+
+async function probeSoundApi() {
+  soundApiOk = false;
+  try {
+    const res = await fetch(soundApiUrl(12) + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('sample HTTP ' + res.status);
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!ct.includes('audio')) throw new Error('wrong content-type: ' + ct);
+    const blob = await res.blob();
+    if (blob.size < 100) throw new Error('empty wav');
+    await assertCacheWav(res, blob);
+    soundApiOk = true;
+    hideSoundWarn();
+  } catch (e) {
+    soundApiOk = false;
+    showSoundWarn(
+      'Sound API is offline. Stop python -m http.server and run: python -m src.cli.serve_viewer'
+    );
+  }
+}
+
+async function loadSounds() {
+  const base = '/outputs/unreal_exports/';
+  try {
+    const res = await fetch(base + 'sounds.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    allSounds = (data.sounds || [])
+      .filter(s => s.inCache !== false)
+      .slice()
+      .sort((a, b) =>
+      (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()) || (a.id - b.id));
+    renderSoundOptions(soundSearchEl.value);
+    const max = data.maxCacheId ?? 2726;
+    soundIdEl.max = max;
+    await probeSoundApi();
+    const apiNote = soundApiOk
+      ? 'Sound API ready — click Play.'
+      : 'Start serve_viewer (see warning above).';
+    soundStatusEl.textContent = `${allSounds.length} sounds in 377 cache (IDs 0–${max}). ${apiNote}`;
+  } catch (e) {
+    soundStatusEl.textContent = 'sounds.json missing. Run build_sound_index.';
+  }
+}
+
+async function playSoundById(id) {
+  const sid = parseInt(id, 10);
+  if (Number.isNaN(sid)) return;
+  soundIdEl.value = sid;
+  if (!soundApiOk) {
+    await probeSoundApi();
+    if (!soundApiOk) {
+      soundStatusEl.textContent = 'Sound API unavailable — use serve_viewer (not http.server).';
+      return;
+    }
+  }
+  soundStatusEl.textContent = `Loading #${sid} ...`;
+  try {
+    const apiUrl = soundApiUrl(sid) + '?t=' + Date.now();
+    if (!apiUrl.startsWith(SOUND_API_PREFIX)) throw new Error('invalid sound URL');
+    const res = await fetch(apiUrl, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    if (!blob.size) throw new Error('empty response');
+    await assertCacheWav(res, blob);
+    const blobUrl = URL.createObjectURL(blob);
+    soundAudio.pause();
+    soundAudio.currentTime = 0;
+    soundAudio.src = blobUrl;
+    soundAudio.onended = () => URL.revokeObjectURL(blobUrl);
+    await soundAudio.play();
+    const s = allSounds.find(x => x.id === sid);
+    soundStatusEl.textContent = `Playing #${sid}${s ? ' — ' + s.name : ''}`;
+  } catch (e) {
+    soundStatusEl.textContent = `Play failed: ${e}`;
+  }
+}
+
+playSoundBtn.addEventListener('click', () => playSoundById(soundIdEl.value));
+stopSoundBtn.addEventListener('click', () => { soundAudio.pause(); soundAudio.currentTime = 0; });
+soundListEl.addEventListener('change', () => {
+  if (soundListEl.value) playSoundById(soundListEl.value);
+});
+soundListEl.addEventListener('dblclick', () => {
+  if (soundListEl.value) playSoundById(soundListEl.value);
+});
+soundIdEl.addEventListener('keydown', e => { if (e.key === 'Enter') playSoundById(soundIdEl.value); });
+soundSearchEl.addEventListener('input', () => renderSoundOptions(soundSearchEl.value));
+soundSearchEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && soundListEl.options.length && !soundListEl.options[0].disabled) {
+    playSoundById(soundListEl.options[0].value);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// World mode: 317-style flat grid, click-to-walk LERP player, scenery placing.
+// ---------------------------------------------------------------------------
+const GRID = 30;            // tiles per side (4x the original 15x15 area)
+const TILE = 128;           // RS units per tile (matches model scale)
+const HALF = GRID * TILE / 2;
+const WALK_TIME = 0.6;      // one game tick: walking covers exactly 1 tile per tick
+const RUN_TIME = 0.3;       // running covers 2 tiles per tick -> half a tick per tile
+                            // (Elvarg MovementQueue.process polls 2 queue points when running)
+const CYCLE_MS = 20;        // client loop cycle ~ 20ms (50fps); projectiles tick in cycles
+const worldStatusEl = document.getElementById('worldStatus');
+const combatStatusEl = document.getElementById('combatStatus');
+const placeBtn = document.getElementById('placeBtn');
+const runBtn = document.getElementById('runBtn');
+const clearPlacedBtn = document.getElementById('clearPlaced');
+const camLockBtn = document.getElementById('camLockBtn');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+const deleteBtn = document.getElementById('deleteBtn');
+const placeSection = document.getElementById('placeSection');
+const paintSection = document.getElementById('paintSection');
+const paintBtn = document.getElementById('paintBtn');
+const paintColorEl = document.getElementById('paintColor');
+const resetTilesBtn = document.getElementById('resetTilesBtn');
+const paintTexGridEl = document.getElementById('paintTexGrid');
+const paintTexLabelEl = document.getElementById('paintTexLabel');
+const worldLocSearchEl = document.getElementById('worldLocSearch');
+const worldLocListEl = document.getElementById('worldLocList');
+const worldLocRotEl = document.getElementById('worldLocRot');
+const worldLocSelEl = document.getElementById('worldLocSel');
+const placeKindLocBtn = document.getElementById('placeKindLoc');
+const placeKindNpcBtn = document.getElementById('placeKindNpc');
+const placeLocPanel = document.getElementById('placeLocPanel');
+const placeNpcPanel = document.getElementById('placeNpcPanel');
+const worldNpcSearchEl = document.getElementById('worldNpcSearch');
+const worldNpcListEl = document.getElementById('worldNpcList');
+const worldNpcRotEl = document.getElementById('worldNpcRot');
+const worldNpcSelEl = document.getElementById('worldNpcSel');
+const exportMapBtn = document.getElementById('exportMapBtn');
+const importMapBtn = document.getElementById('importMapBtn');
+const importMapFileEl = document.getElementById('importMapFile');
+const addDummyBtn = document.getElementById('addDummy');
+const clearDummiesBtn = document.getElementById('clearDummies');
+const pGenderSel = document.getElementById('pGender');
+const kitControls = document.getElementById('kitControls');
+const colorControls = document.getElementById('colorControls');
+const chessStartBtn = document.getElementById('chessStartBtn');
+const chessStopBtn = document.getElementById('chessStopBtn');
+const chessStatusEl = document.getElementById('chessStatusEl');
+const chessSection = document.getElementById('chessSection');
+const raveStartBtn = document.getElementById('raveStartBtn');
+const raveStopBtn = document.getElementById('raveStopBtn');
+const raveSection = document.getElementById('raveSection');
+const raveYoutubeEl = document.getElementById('raveYoutubeEl');
+const raveYoutubeStartEl = document.getElementById('raveYoutubeStartEl');
+const raveStatusEl = document.getElementById('raveStatusEl');
+
+let chessWorld = null;
+let raveWorld = null;
+let worldActive = false;
+let selectedNpcObj = null;
+const RAVE_EMOTES = ['dance', 'jig', 'headbang'];
+let raveEmoteIdx = 0;
+let raveEmoteTimer = 0;
+let worldGroup = null;
+let pickPlane = null;
+let tileMeshes = [];       // ground tile meshes indexed by (tx * GRID + tz)
+const tileBaseColor = (tx, tz) => ((tx + tz) % 2 === 0 ? 0x4f6e34 : 0x5d7d3f);
+let player = null;
+let playerMixer = null;
+let playerActions = {};
+let playerCurrent = null;
+let playerTile = { x: Math.floor(GRID / 2), z: Math.floor(GRID / 2) };
+let walkQueue = [];
+let moving = false;
+let playerYaw317 = 0;      // 11-bit facing (PathingEntity.yaw, 0..2047)
+let playerDstYaw317 = 0;   // movement / look target yaw
+const RS_YAW_SCALE = 2048 / (Math.PI * 2);
+const TURN_SPEED = 32;     // yaw units per client cycle (player turnSpeed)
+const MOVE_STEP = 4;       // sub-tile units per cycle at walk pace (317 moveSpeed base)
+let placeMode = false;
+let paintMode = false;
+let deleteMode = false;
+let cameraLock = false;
+let selectedTexId = null;
+let running = false;
+let placedObjects = [];
+let placedMixers = []; // animation mixers for placed scenery (e.g. animated fire)
+let idkData = null;
+let playerLoadToken = 0;
+
+// --- Combat / projectile state (ported from 317 ProjectileEntity + Elvarg) ---
+let worldCycle = 0;        // running count of client cycles
+let projectiles = [];      // active flying projectiles + scheduled impacts
+let transients = [];       // one-shot spotanim entities (start/impact gfx) to auto-remove
+let dummies = [];          // [{ obj, tile, mixer }]
+let selectedTarget = null; // a dummy entry
+const spotBufCache = {};   // id -> Promise<ArrayBuffer>
+
+// Graphic height enum -> RS units above ground (LOW/MIDDLE/HIGH).
+const GFX_HEIGHT = { LOW: 0, MIDDLE: 60, HIGH: 100 };
+
+// Spell presets mirror com.elvarg.game.content.combat.magic.CombatSpells.
+// Projectile defaults (ProjectileBuilder): start 43, end 31, delay 51, angle 16,
+// distanceOffset 64, duration -5, span 10 -> speed = delay + duration + dist*span.
+// anim = baked player clip name (player.glb?combat=1); cast/impact = 377 sound ids.
+// Sound ids are the ones Elvarg defines (ICA_BARRAGE_IMPACT 1125, ICE_BLITZ 1110,
+// SHOOT_ARROW 370); spells Elvarg leaves silent stay silent.
+const SPELLS = {
+  fire_wave:   { name: 'Fire Wave',   anim: 'cast_fire_wave',   maxHit: 20, start: { id: 155, h: 'MIDDLE' }, end: { id: 157, h: 'HIGH' }, proj: { id: 156 } },
+  fire_blast:  { name: 'Fire Blast',  anim: 'cast_fire_blast',  maxHit: 16, start: { id: 129, h: 'HIGH' },   end: { id: 131, h: 'HIGH' }, proj: { id: 130 } },
+  ice_barrage: { name: 'Ice Barrage', anim: 'cast_ice_barrage', maxHit: 30, start: null,                     end: { id: 369, h: 'LOW' },  proj: null, castSound: 1111, impactSound: 1125 },
+  ice_blitz:   { name: 'Ice Blitz',   anim: 'cast_ice_blitz',   maxHit: 26, start: { id: 366, h: 'HIGH' },   end: { id: 367, h: 'LOW' },  proj: null, impactSound: 1110 },
+};
+
+// Ranged ammo mirrors RangedData.Ammunition + RangedCombatMethod params.
+// Projectile(projectileId, startHeight, endHeight, delay, speed) -> angle 16, offset 64.
+const ARROWS = {
+  bronze:  { name: 'Bronze arrow',  anim: 'shoot_bow',      maxHit: 8,  shootSound: 370, start: { id: 19, h: 'HIGH' }, proj: { id: 10 }, delay: 40, speed: 57, startH: 43, endH: 31 },
+  rune:    { name: 'Rune arrow',    anim: 'shoot_bow',      maxHit: 15, shootSound: 370, start: { id: 24, h: 'HIGH' }, proj: { id: 15 }, delay: 40, speed: 57, startH: 43, endH: 31 },
+  adamant: { name: 'Adamant arrow', anim: 'shoot_bow',      maxHit: 13, shootSound: 370, start: { id: 22, h: 'HIGH' }, proj: { id: 13 }, delay: 40, speed: 57, startH: 43, endH: 31 },
+  cannon:  { name: 'Crossbow bolt', anim: 'shoot_crossbow', maxHit: 14, shootSound: 370, start: null,                 proj: { id: 27 }, delay: 46, speed: 62, startH: 44, endH: 35 },
+};
+
+window.__world = {
+  get cycle() { return worldCycle; },
+  get projectiles() { return projectiles.map(p => ({ id: p.spotId, added: p.added, hasObj: !!p.obj, start: p.startCycle, last: p.lastCycle, x: p.x, y: p.y, z: p.z })); },
+  get transients() { return transients.map(t => ({ x: t.obj.position.x, y: t.obj.position.y, z: t.obj.position.z, ttl: t.ttl })); },
+  get dummies() { return dummies.map(d => d.tile); },
+  get placedCount() { return placedObjects.length; },
+  get player() { return player ? { tile: { ...playerTile }, rotDeg: +(player.rotation.y * 180 / Math.PI).toFixed(1), moving, running, clip: playerCurrent } : null; },
+  get animClips() { return Object.keys(playerActions); },
+  setRun: (v) => { running = !!v; if (typeof runBtn !== 'undefined' && runBtn) { runBtn.textContent = 'Run: ' + (running ? 'on' : 'off'); } },
+  walk: (tx, tz) => startWalkTo(tx, tz),
+  dummyScreen: (i) => { const d = dummies[i]; if (!d || !d.obj) return null; const s = worldToScreen(d.obj.position.x, d.midY, d.obj.position.z); return { x: Math.round(s.x), y: Math.round(s.y), visible: s.visible }; },
+  dummyBox: (i) => { const d = dummies[i]; if (!d || !d.obj) return null; const b = new THREE.Box3().setFromObject(d.obj); return { minY: +b.min.y.toFixed(1), maxY: +b.max.y.toFixed(1), posY: +d.obj.position.y.toFixed(1), midY: +d.midY.toFixed(1), headY: +d.headY.toFixed(1) }; },
+  pickAt: (clientX, clientY) => { const d = pickDummy(ndcFromEvent({ clientX, clientY })); return d ? { ...d.tile } : null; },
+  cast: (k) => castSpell(k),
+  shoot: (k) => shootArrow(k),
+  aimAt: (i, dist) => { const d = dummies[i]; if (!d || !d.obj) return false; const z = dist || 620; controls.target.set(d.obj.position.x, d.headY * 0.5, d.obj.position.z); camera.position.set(d.obj.position.x, d.headY * 0.55, d.obj.position.z + z); controls.update(); return true; },
+  placeLoc: (id, tx, tz) => placeLocAt(id, tx, tz, 0),
+  placeNpc: (id, tx, tz, rot) => placeNpcAt(id, tx, tz, rot || 0),
+  chessClick: (tx, tz) => chessWorld?.handleClick(tx, tz),
+  get chessActive() { return !!(chessWorld && chessWorld.isActive()); },
+  // Recolour a single ground tile. color accepts a hex string ('#ff0000') or int (0xff0000).
+  setTile: (tx, tz, color) => { const m = tileMeshes[tx * GRID + tz]; if (!m) return false; m.material.color.set(color); return true; },
+  // Restore a tile to its checkerboard colour, or all tiles when no args given.
+  resetTiles: (tx, tz) => { if (tx == null) { for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++) { const m = tileMeshes[x * GRID + z]; if (m) m.material.color.set(tileBaseColor(x, z)); } return true; } const m = tileMeshes[tx * GRID + tz]; if (!m) return false; m.material.color.set(tileBaseColor(tx, tz)); return true; },
+};
+
+function tileToScene(tx, tz) {
+  return new THREE.Vector3((tx + 0.5) * TILE - HALF, 0, (tz + 0.5) * TILE - HALF);
+}
+
+function clampTile(v) {
+  return Math.max(0, Math.min(GRID - 1, v));
+}
+
+function buildGrid() {
+  worldGroup = new THREE.Group();
+  tileMeshes = [];
+  tilePaint = {};
+  const tileGeo = new THREE.PlaneGeometry(TILE, TILE);
+  for (let tx = 0; tx < GRID; tx++) {
+    for (let tz = 0; tz < GRID; tz++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: tileBaseColor(tx, tz),
+        roughness: 1, metalness: 0,
+      });
+      const m = new THREE.Mesh(tileGeo, mat);
+      m.rotation.x = -Math.PI / 2;
+      const p = tileToScene(tx, tz);
+      m.position.set(p.x, -0.5, p.z);
+      worldGroup.add(m);
+      tileMeshes[tx * GRID + tz] = m;
+    }
+  }
+  const pickMat = new THREE.MeshBasicMaterial({ visible: false });
+  pickPlane = new THREE.Mesh(new THREE.PlaneGeometry(GRID * TILE, GRID * TILE), pickMat);
+  pickPlane.rotation.x = -Math.PI / 2;
+  worldGroup.add(pickPlane);
+
+  scene.add(worldGroup);
+}
+
+function disposeWorld() {
+  if (worldGroup) {
+    scene.remove(worldGroup);
+    worldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    worldGroup = null;
+  }
+  if (player) { scene.remove(player); player = null; }
+  playerMixer = null; playerActions = {}; playerCurrent = null;
+  placedObjects = []; placedMixers = [];
+  walkQueue = []; moving = false;
+  projectiles.forEach(p => { if (p.obj) scene.remove(p.obj); });
+  transients.forEach(t => scene.remove(t.obj));
+  dummies.forEach(d => scene.remove(d.obj));
+  projectiles = []; transients = []; dummies = []; selectedTarget = null;
+  if (overlayEl) overlayEl.innerHTML = '';
+  if (crossEl) crossEl.style.display = 'none';
+  if (hoverEl) hoverEl.style.display = 'none';
+  if (menuEl) menuEl.style.display = 'none';
+  crossMode = 0;
+  if (chessWorld) { chessWorld.dispose(); }
+  if (raveWorld) { raveWorld.dispose(); raveWorld = null; }
+  selectedNpcObj = null;
+  // Clear CSS3D screen objects.
+  while (cssScene.children.length) cssScene.remove(cssScene.children[0]);
+}
+
+function ensureChessWorld() {
+  if (chessWorld) return chessWorld;
+  chessWorld = createChessWorld({
+    THREE,
+    scene,
+    worldGroup,
+    loader,
+    applyWire,
+    tuneClipInterp,
+    tileToScene,
+    tileMeshes,
+    tileBaseColor,
+    GRID,
+    TILE,
+    worldStatusEl: chessStatusEl || worldStatusEl,
+    fx: createChessFx(),
+  });
+  return chessWorld;
+}
+
+function ensureRaveWorld() {
+  if (raveWorld) return raveWorld;
+  raveWorld = createRaveWorld({
+    THREE,
+    worldGroup,
+    tileToScene,
+    tileMeshes,
+    tileBaseColor,
+    GRID,
+    TILE,
+    HALF,
+    cssScene,
+    overlayRoot: app,
+    audioCtx,
+    getOccluders: (excludeRoot) => gatherVideoOccluders(excludeRoot),
+    getPlayer: () => player,
+  });
+  return raveWorld;
+}
+
+function setRaveLighting(on) {
+  if (on) {
+    hemiLight.intensity = 0.12;
+    ambientLight.intensity = 0.02;
+    key.intensity = 0.35;
+    fill.intensity = 0.12;
+  } else {
+    hemiLight.intensity = 0.9;
+    ambientLight.intensity = 0.15;
+    key.intensity = 1.5;
+    fill.intensity = 0.5;
+  }
+}
+
+async function enterWorld() {
+  if (worldActive) return;
+  clearCurrent();
+  grid.visible = false;
+  worldActive = true;
+  playerTile = { x: Math.floor(GRID / 2), z: Math.floor(GRID / 2) };
+  buildGrid();
+  if (!idkData) await loadIdkManifest();
+  if (!spriteData) await loadSpriteManifest();
+  await loadPlayer();
+  camera.near = 1; camera.far = 100000; camera.updateProjectionMatrix();
+  controls.target.set(0, 60, 0);
+  camera.position.set(0, 1200, 1500);
+  controls.update();
+  spawnDummy(3, 11);
+  spawnDummy(11, 11);
+  renderWorldLocList(worldLocSearchEl ? worldLocSearchEl.value : '');
+  renderWorldNpcList(worldNpcSearchEl ? worldNpcSearchEl.value : '');
+  statusEl.textContent = 'World mode: left-click a tile to walk (0.6s/tile).';
+}
+
+function exitWorld() {
+  worldActive = false;
+  raveEmoteIdx = 0;
+  raveEmoteTimer = 0;
+  grid.visible = true;
+  disposeGhost();
+  ghostVisible = false; controls.enableZoom = true;
+  clearHistory();
+  disposeWorld();
+}
+
+function setPlayerAction(name) {
+  if (!playerActions[name] || playerCurrent === name) return;
+  const next = playerActions[name];
+  if (playerActions[playerCurrent]) playerActions[playerCurrent].fadeOut(0.2);
+  next.reset().fadeIn(0.2).play();
+  playerCurrent = name;
+}
+
+function playerParams() {
+  const gender = parseInt(pGenderSel.value, 10) || 0;
+  const params = [`gender=${gender}`];
+  kitControls.querySelectorAll('select').forEach((sel, i) => {
+    params.push(`k${i}=${sel.value}`);
+  });
+  colorControls.querySelectorAll('select').forEach((sel, i) => {
+    params.push(`c${i}=${sel.value}`);
+  });
+  return params.join('&');
+}
+
+let playerOneShot = null; // name of a cast/attack clip currently playing once
+
+function loadPlayer() {
+  return new Promise(resolve => {
+    const token = ++playerLoadToken;
+    const emoteQ = raveWorld?.isActive() ? '&emotes=1' : '';
+    const url = playerUsesCustom
+      ? `${customGlbUrl()}&combat=1${emoteQ}`
+      : `/api/player.glb?${playerParams()}&combat=1${emoteQ}&t=${Date.now()}`;
+    worldStatusEl.textContent = 'Loading player...';
+    loader.load(url, gltf => {
+      if (token !== playerLoadToken || !worldActive) { resolve(); return; }
+      if (player) { scene.remove(player); }
+      player = gltf.scene;
+      applyWire(player);
+      const sp = tileToScene(playerTile.x, playerTile.z);
+      player.position.copy(sp);
+      playerYaw317 = playerDstYaw317 = 0;
+      player.rotation.y = yaw317ToSceneRot(0);
+      scene.add(player);
+      playerActions = {};
+      playerCurrent = null;
+      playerOneShot = null;
+      if (gltf.animations && gltf.animations.length) {
+        playerMixer = new THREE.AnimationMixer(player);
+        playerMixer.addEventListener('finished', e => {
+          // Cast/attack clip ended -> drop back to stand (or walk if moving).
+          playerOneShot = null;
+          playerCurrent = null;
+          if (moving) sync317MoveClip(); else update317StandClip();
+        });
+        for (const clip of gltf.animations) {
+          tuneClipInterp(clip);
+          const action = playerMixer.clipAction(clip);
+          const loopNames = ['stand', 'turn', 'walk', 'turn_around', 'turn_left', 'turn_right', 'run',
+            'dance', 'jig', 'headbang'];
+          const loops = loopNames.includes(clip.name);
+          action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+          action.clampWhenFinished = !loops;
+          playerActions[clip.name] = action;
+        }
+        setPlayerAction(playerActions['stand'] ? 'stand' : Object.keys(playerActions)[0]);
+      } else {
+        playerMixer = null;
+      }
+      worldStatusEl.textContent = 'Left-click a tile to walk. 0.6s per tile.';
+      resolve();
+    }, undefined, err => { worldStatusEl.textContent = 'Player load failed: ' + err; resolve(); });
+  });
+}
+
+// Play a cast/attack clip once on the source player; mixer 'finished' returns to stand.
+function playPlayerOneShot(name) {
+  const action = playerActions[name];
+  if (!action) return;
+  if (playerActions[playerCurrent]) playerActions[playerCurrent].fadeOut(0.1);
+  playerOneShot = name;
+  playerCurrent = name;
+  action.reset();
+  action.fadeIn(0.1).play();
+}
+
+function reloadPlayer() {
+  if (worldActive) loadPlayer();
+}
+
+function buildPath(from, to) {
+  const path = [];
+  let cx = from.x, cz = from.z;
+  let guard = 0;
+  while ((cx !== to.x || cz !== to.z) && guard++ < 256) {
+    if (cx < to.x) cx++; else if (cx > to.x) cx--;
+    if (cz < to.z) cz++; else if (cz > to.z) cz--;
+    path.push({ x: cx, z: cz });
+  }
+  return path;
+}
+
+function startWalkTo(tx, tz) {
+  tx = clampTile(tx); tz = clampTile(tz);
+  const rsX = player.position.x + HALF;
+  const rsZ = player.position.z + HALF;
+  const origin = {
+    x: clampTile(Math.floor(rsX / TILE)),
+    z: clampTile(Math.floor(rsZ / TILE)),
+  };
+  walkQueue = buildPath(origin, { x: tx, z: tz });
+}
+
+function radToYaw317(rad) {
+  return Math.round(rad * RS_YAW_SCALE) & 2047;
+}
+
+function yaw317ToRad(yaw317) {
+  return (yaw317 & 2047) / RS_YAW_SCALE;
+}
+
+// Player GLB verts pass through _y_up (negate Z), so the mesh forward axis is
+// flipped vs RS yaw. Add PI so the body faces the walk direction, not moonwalk.
+function yaw317ToSceneRot(yaw317) {
+  return yaw317ToRad(yaw317) + Math.PI;
+}
+
+function signedRemainingYaw(yaw317, dst317) {
+  let rem = (dst317 - yaw317) & 2047;
+  if (rem > 1024) rem -= 2048;
+  return rem;
+}
+
+// Game.updateMovement: dstYaw from sub-tile delta to the next waypoint.
+function dstYaw317FromDelta(x, z, dstX, dstZ) {
+  if (x < dstX) {
+    if (z < dstZ) return 1280;
+    if (z > dstZ) return 1792;
+    return 1536;
+  }
+  if (x > dstX) {
+    if (z < dstZ) return 768;
+    if (z > dstZ) return 256;
+    return 512;
+  }
+  if (z < dstZ) return 1024;
+  return 0;
+}
+
+function tileCenterRs(tx, tz) {
+  return { x: tx * TILE + TILE / 2, z: tz * TILE + TILE / 2 };
+}
+
+// Game.updateMovement: pick walk/run vs turn-left/right/around from facing delta.
+// Run animation only when the Run toggle is on (317 pathRunning); moveSpeed >= 8
+// on long paths is a speed ramp there, not the run cycle.
+function pick317MoveClip(remainingYaw, moveSpeed) {
+  let clip = 'turn_around';
+  if (remainingYaw >= -256 && remainingYaw <= 256) {
+    clip = (running && moveSpeed >= 8) ? 'run' : 'walk';
+  } else if (remainingYaw >= 256 && remainingYaw < 768) {
+    clip = 'turn_right';
+  } else if (remainingYaw >= -768 && remainingYaw <= -256) {
+    clip = 'turn_left';
+  }
+  if (!playerActions[clip]) {
+    clip = playerActions['walk'] ? 'walk' : (playerActions['stand'] ? 'stand' : clip);
+  }
+  const wa = playerActions['walk'];
+  if (wa) wa.timeScale = 1;
+  setPlayerAction(clip);
+}
+
+function moveSpeed317(turning) {
+  let speed = running ? MOVE_STEP * 2 : MOVE_STEP;
+  if (turning) speed = 2;
+  return speed;
+}
+
+function sync317MoveClip() {
+  if (!walkQueue.length) { update317StandClip(); return; }
+  const next = walkQueue[0];
+  const rsX = player.position.x + HALF;
+  const rsZ = player.position.z + HALF;
+  const dst = tileCenterRs(next.x, next.z);
+  const dstYaw317 = dstYaw317FromDelta(rsX, rsZ, dst.x, dst.z);
+  const rem = signedRemainingYaw(playerYaw317, dstYaw317);
+  const turning = playerYaw317 !== dstYaw317;
+  pick317MoveClip(rem, moveSpeed317(turning));
+}
+
+// Game.updateFacingDirection: rotate yaw toward dst at turnSpeed per cycle.
+function update317Facing(cycles) {
+  const step = TURN_SPEED * cycles;
+  if (step <= 0) return;
+  const rem = (playerDstYaw317 - playerYaw317) & 2047;
+  if (rem === 0) return;
+  if (rem < step || rem > (2048 - step)) {
+    playerYaw317 = playerDstYaw317;
+  } else if (rem > 1024) {
+    playerYaw317 = (playerYaw317 - step) & 2047;
+  } else {
+    playerYaw317 = (playerYaw317 + step) & 2047;
+  }
+}
+
+function updateRaveEmote(dt) {
+  if (!raveWorld?.isActive() || !player || playerOneShot) return;
+  const avail = RAVE_EMOTES.filter(n => playerActions[n]);
+  if (!avail.length) return;
+  raveEmoteTimer += dt;
+  const name = RAVE_EMOTES[raveEmoteIdx];
+  const cur = playerActions[name];
+  const dur = cur?.getClip()?.duration || 2.4;
+  if (!cur?.isRunning() || raveEmoteTimer >= dur) {
+    do {
+      raveEmoteIdx = (raveEmoteIdx + 1) % RAVE_EMOTES.length;
+    } while (!playerActions[RAVE_EMOTES[raveEmoteIdx]] && raveEmoteIdx !== 0);
+    raveEmoteTimer = 0;
+    const next = RAVE_EMOTES[raveEmoteIdx];
+    if (playerActions[next]) setPlayerAction(next);
+  } else if (!RAVE_EMOTES.includes(playerCurrent)) {
+    setPlayerAction(name);
+  }
+}
+
+function update317StandClip() {
+  if (playerOneShot) return;
+  const rem = signedRemainingYaw(playerYaw317, playerDstYaw317);
+  if (rem !== 0 && playerActions['turn']) setPlayerAction('turn');
+  else if (playerActions['stand']) setPlayerAction('stand');
+  const wa = playerActions['walk'];
+  if (wa) wa.timeScale = 1;
+}
+
+function update317Movement(dt) {
+  if (!player) return;
+  const cycles = dt / (CYCLE_MS / 1000);
+
+  if (!walkQueue.length) {
+    moving = false;
+    update317Facing(cycles);
+    player.rotation.y = yaw317ToSceneRot(playerYaw317);
+    if (raveWorld?.isActive() && raveWorld.isPlayerInZone(player)) updateRaveEmote(dt);
+    else update317StandClip();
+    return;
+  }
+
+  moving = true;
+  const next = walkQueue[0];
+  let rsX = player.position.x + HALF;
+  let rsZ = player.position.z + HALF;
+  const dst = tileCenterRs(next.x, next.z);
+  const dstX = dst.x;
+  const dstZ = dst.z;
+
+  const dstYaw317 = dstYaw317FromDelta(rsX, rsZ, dstX, dstZ);
+  playerDstYaw317 = dstYaw317;
+
+  const remainingYaw = signedRemainingYaw(playerYaw317, dstYaw317);
+  const turning = playerYaw317 !== dstYaw317;
+  const moveSpeed = moveSpeed317(turning);
+
+  if (!playerOneShot) pick317MoveClip(remainingYaw, moveSpeed);
+
+  const delta = moveSpeed * cycles;
+  if (rsX < dstX) rsX = Math.min(rsX + delta, dstX);
+  else if (rsX > dstX) rsX = Math.max(rsX - delta, dstX);
+  if (rsZ < dstZ) rsZ = Math.min(rsZ + delta, dstZ);
+  else if (rsZ > dstZ) rsZ = Math.max(rsZ - delta, dstZ);
+
+  if (Math.abs(rsX - dstX) < 0.5 && Math.abs(rsZ - dstZ) < 0.5) {
+    rsX = dstX;
+    rsZ = dstZ;
+    walkQueue.shift();
+    playerTile = { x: next.x, z: next.z };
+  }
+
+  player.position.set(rsX - HALF, 0, rsZ - HALF);
+  update317Facing(cycles);
+  player.rotation.y = yaw317ToSceneRot(playerYaw317);
+}
+
+function updateWorld(dt) {
+  if (playerMixer) playerMixer.update(dt);
+  for (const d of dummies) if (d.mixer) d.mixer.update(dt);
+  for (const m of placedMixers) m.update(dt);
+  updateProjectiles(dt);
+  updateOverlay();
+  updateCross();
+  if (!player) return;
+  update317Movement(dt);
+  camera.getWorldDirection(_listenerFwd);
+  if (chessWorld?.isActive()) chessWorld.update(dt);
+  if (raveWorld?.isActive()) raveWorld.update(dt, camera, camera.position, _listenerFwd, player);
+  updateCameraFollow();
+}
+
+// When locked, recenter the orbit pivot onto the player every frame while
+// preserving the user's current zoom/angle (so they can still orbit & zoom).
+const _camShift = new THREE.Vector3();
+const _camFocus = new THREE.Vector3();
+function updateCameraFollow() {
+  if (!cameraLock || !player) return;
+  _camFocus.set(player.position.x, 60, player.position.z);
+  _camShift.copy(_camFocus).sub(controls.target);
+  controls.target.add(_camShift);
+  camera.position.add(_camShift);
+}
+
+// --- Spotanim loading (cached buffers, parsed per spawn for independent mixers) ---
+function getSpotBuffer(id) {
+  if (!spotBufCache[id]) {
+    spotBufCache[id] = fetch(spotGlbUrl(id) + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error('spotanim ' + id + ' HTTP ' + r.status); return r.arrayBuffer(); });
+  }
+  return spotBufCache[id];
+}
+
+function parseGlb(buf) {
+  return new Promise((res, rej) => loader.parse(buf.slice(0), '', g => res(g), rej));
+}
+
+async function loadSpotScene(id) {
+  const buf = await getSpotBuffer(id);
+  return parseGlb(buf);
+}
+
+// One-shot ground/impact graphic: plays its seq once, then removes itself.
+// yaw orients the effect; the launch/cast graphic inherits the caster's body
+// facing (317 merges it into the caster model), impact graphics stay at yaw 0.
+async function spawnSpotanim(id, pos, heightUnits, yaw) {
+  let gltf;
+  try { gltf = await loadSpotScene(id); } catch (e) { console.warn(e); return; }
+  if (!worldActive) return;
+  const obj = gltf.scene;
+  applyWire(obj);
+  obj.position.set(pos.x, (heightUnits || 0), pos.z);
+  if (yaw) obj.rotation.y = yaw;
+  scene.add(obj);
+  let mixer = null, dur = 0.4;
+  if (gltf.animations && gltf.animations.length) {
+    mixer = new THREE.AnimationMixer(obj);
+    const clip = gltf.animations[0];
+    tuneClipInterp(clip);
+    const action = mixer.clipAction(clip);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    dur = clip.duration || 0.4;
+  }
+  transients.push({ obj, mixer, ttl: dur + 0.05 });
+}
+
+// --- Projectile arc math, ported 1:1 from ProjectileEntity.java (Y-up here) ---
+function projUpdateVelocity(p, cycle, dst) {
+  if (!p.mobile) {
+    const dx = dst.x - p.srcX, dz = dst.z - p.srcZ;
+    const d = Math.hypot(dx, dz) || 1;
+    p.x = p.srcX + (dx * p.arc) / d;
+    p.z = p.srcZ + (dz * p.arc) / d;
+    p.y = p.srcY;
+  }
+  let dtc = (p.lastCycle + 1) - cycle;
+  if (dtc < 0.0001) dtc = 0.0001;
+  p.velX = (dst.x - p.x) / dtc;
+  p.velZ = (dst.z - p.z) / dtc;
+  p.vel = Math.hypot(p.velX, p.velZ);
+  if (!p.mobile) {
+    p.velY = p.vel * Math.tan(p.peakPitch * 0.02454369);
+  }
+  p.accY = (2 * ((dst.y - p.y) - p.velY * dtc)) / (dtc * dtc);
+}
+
+function projUpdate(p, delta) {
+  p.mobile = true;
+  p.x += p.velX * delta;
+  p.z += p.velZ * delta;
+  p.y += p.velY * delta + 0.5 * p.accY * delta * delta;
+  p.velY += p.accY * delta;
+  p.yaw = Math.atan2(p.velX, p.velZ);
+  p.pitch = Math.atan2(p.velY, p.vel || 0.0001);
+}
+
+function targetPos(p) {
+  if (p.dstWorld) return p.dstWorld;
+  const d = p.target;
+  const base = (d && dummies.includes(d)) ? tileToScene(d.tile.x, d.tile.z) : p.dstTile;
+  return { x: base.x, y: p.dstY, z: base.z };
+}
+
+function updateProjectiles(dt) {
+  const dcycles = (dt * 1000) / CYCLE_MS;
+  worldCycle += dcycles;
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    if (worldCycle > p.lastCycle) {
+      if (p.obj) scene.remove(p.obj);
+      const tp = targetPos(p);
+      if (p.endGfx) spawnSpotanim(p.endGfx.id, tp, GFX_HEIGHT[p.endGfx.h] || 0);
+      if (p.impactSound != null) playSfx(p.impactSound, tp); // positional: from the landing spot
+      if (p.onImpact) p.onImpact();
+      if (p.target && dummies.includes(p.target) && p.maxHit != null) {
+        applyHit(p.target, Math.floor(Math.random() * (p.maxHit + 1)));
+      }
+      projectiles.splice(i, 1);
+      continue;
+    }
+    if (worldCycle < p.startCycle) continue;
+    if (!p.obj) continue; // projectile-less spell (barrage): just wait for impact
+    if (!p.added) { scene.add(p.obj); p.added = true; }
+    const tp = targetPos(p);
+    projUpdateVelocity(p, worldCycle, tp);
+    projUpdate(p, dcycles);
+    p.obj.position.set(p.x, p.y, p.z);
+    p.obj.rotation.set(-p.pitch, p.yaw, 0, 'YXZ');
+    if (p.mixer) p.mixer.update(dt);
+  }
+  for (let i = transients.length - 1; i >= 0; i--) {
+    const t = transients[i];
+    if (t.mixer) t.mixer.update(dt);
+    t.ttl -= dt;
+    if (t.ttl <= 0) { scene.remove(t.obj); transients.splice(i, 1); }
+  }
+}
+
+async function makeProjectileEntity(id) {
+  let gltf;
+  try { gltf = await loadSpotScene(id); } catch (e) { console.warn(e); return null; }
+  const obj = gltf.scene;
+  applyWire(obj);
+  let mixer = null;
+  if (gltf.animations && gltf.animations.length) {
+    mixer = new THREE.AnimationMixer(obj);
+    const clip = gltf.animations[0];
+    tuneClipInterp(clip);
+    const action = mixer.clipAction(clip);
+    action.setLoop(THREE.LoopRepeat);
+    action.play();
+  }
+  return { obj, mixer };
+}
+
+function chebyshev(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.z - b.z)); }
+
+async function fireProjectile({ spotId, startH, endH, delay, speed, peakPitch, arc, target, endGfx, maxHit, impactSound }) {
+  const src = tileToScene(playerTile.x, playerTile.z);
+  const dstTile = tileToScene(target.tile.x, target.tile.z);
+  const p = {
+    obj: null, mixer: null, added: false, mobile: false, spotId,
+    srcX: src.x, srcZ: src.z, srcY: startH * 4,
+    dstTile, dstY: endH * 4,
+    arc, peakPitch,
+    startCycle: worldCycle + delay,
+    lastCycle: worldCycle + speed,
+    x: 0, y: 0, z: 0, velX: 0, velZ: 0, velY: 0, accY: 0, vel: 0, yaw: 0, pitch: 0,
+    target, endGfx, maxHit, impactSound,
+  };
+  projectiles.push(p);
+  if (spotId != null) {
+    const built = await makeProjectileEntity(spotId);
+    if (built && projectiles.includes(p)) { p.obj = built.obj; p.mixer = built.mixer; }
+  }
+}
+
+function facePlayerTo(target) {
+  if (!player) return;
+  const src = tileToScene(playerTile.x, playerTile.z);
+  const dst = tileToScene(target.tile.x, target.tile.z);
+  // Combat faces the target immediately (so the cast + start GFX point the right way).
+  const ang = Math.atan2(dst.x - src.x, dst.z - src.z);
+  playerYaw317 = playerDstYaw317 = radToYaw317(ang);
+  player.rotation.y = yaw317ToSceneRot(playerYaw317);
+}
+
+function castSpell(key) {
+  const spell = SPELLS[key];
+  if (!spell) return;
+  const target = currentTarget();
+  if (!target) { combatStatusEl.textContent = 'No dummy to target. Add one first.'; return; }
+  facePlayerTo(target);
+  if (spell.anim) playPlayerOneShot(spell.anim);
+  if (spell.castSound != null) playSfx(spell.castSound, tileToScene(playerTile.x, playerTile.z));
+  const dist = chebyshev(playerTile, target.tile);
+  // ProjectileBuilder defaults: delay 51, duration -5, span 10, angle 16, offset 64.
+  const delay = 51, speed = 51 + (-5) + dist * 10;
+  if (spell.start) {
+    const sp = tileToScene(playerTile.x, playerTile.z);
+    spawnSpotanim(spell.start.id, sp, GFX_HEIGHT[spell.start.h] || 0, player ? player.rotation.y : 0);
+  }
+  fireProjectile({
+    spotId: spell.proj ? spell.proj.id : null,
+    startH: 43, endH: 31, delay, speed, peakPitch: 16, arc: 64,
+    target, endGfx: spell.end, maxHit: spell.maxHit, impactSound: spell.impactSound,
+  });
+  combatStatusEl.textContent = `Cast ${spell.name} at dummy (${target.tile.x}, ${target.tile.z}).`;
+}
+
+function shootArrow(key) {
+  const ammo = ARROWS[key];
+  if (!ammo) return;
+  const target = currentTarget();
+  if (!target) { combatStatusEl.textContent = 'No dummy to target. Add one first.'; return; }
+  facePlayerTo(target);
+  if (ammo.anim) playPlayerOneShot(ammo.anim);
+  if (ammo.shootSound != null) playSfx(ammo.shootSound, tileToScene(playerTile.x, playerTile.z));
+  if (ammo.start) {
+    const sp = tileToScene(playerTile.x, playerTile.z);
+    spawnSpotanim(ammo.start.id, sp, GFX_HEIGHT[ammo.start.h] || 0, player ? player.rotation.y : 0);
+  }
+  fireProjectile({
+    spotId: ammo.proj.id,
+    startH: ammo.startH, endH: ammo.endH, delay: ammo.delay, speed: ammo.speed,
+    peakPitch: 16, arc: 64, target, endGfx: null, maxHit: ammo.maxHit,
+  });
+  combatStatusEl.textContent = `Fired ${ammo.name} at dummy (${target.tile.x}, ${target.tile.z}).`;
+}
+
+function currentTarget() {
+  if (selectedTarget && dummies.includes(selectedTarget)) return selectedTarget;
+  if (!dummies.length) return null;
+  // nearest dummy to the player
+  let best = dummies[0], bd = Infinity;
+  for (const d of dummies) {
+    const dd = chebyshev(playerTile, d.tile);
+    if (dd < bd) { bd = dd; best = d; }
+  }
+  selectedTarget = best;
+  return best;
+}
+
+function spawnDummy(tx, tz) {
+  tx = clampTile(tx); tz = clampTile(tz);
+  const url = `/api/player.glb?gender=0&c0=${dummies.length % 12}&t=${Date.now()}`;
+  loader.load(url, gltf => {
+    if (!worldActive) return;
+    const obj = gltf.scene;
+    applyWire(obj);
+    const sp = tileToScene(tx, tz);
+    obj.position.copy(sp);
+    obj.rotation.y = Math.PI; // face the player area
+    scene.add(obj);
+    let mixer = null;
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(obj);
+      const stand = gltf.animations.find(c => c.name === 'stand') || gltf.animations[0];
+      tuneClipInterp(stand);
+      mixer.clipAction(stand).setLoop(THREE.LoopRepeat).play();
+    }
+    const box = new THREE.Box3().setFromObject(obj);
+    // RS projects overlays from the GROUND (tile), not the model's bbox centre:
+    // hit splats at height/2, health bars at height + 15 (Game.drawHitmarks/drawHealth).
+    // Using the bbox midpoint sinks the splat because the model dips below the tile.
+    const ground = obj.position.y;
+    const height = Math.max(1, box.max.y - ground);
+    const entry = {
+      obj, tile: { x: tx, z: tz }, mixer, name: 'Combat dummy',
+      hp: 99, maxHp: 99, lastHit: 0, splats: [],
+      hpEl: null, hpFill: null, headY: ground + height, midY: ground + height * 0.5,
+    };
+    dummies.push(entry);
+    if (!selectedTarget) selectedTarget = entry;
+    combatStatusEl.textContent = `Dummy added at (${tx}, ${tz}). ${dummies.length} total.`;
+  }, undefined, err => { combatStatusEl.textContent = 'Dummy load failed: ' + err; });
+}
+
+// 317 picks entities by their projected screen bounds (a bounding box/cylinder),
+// not per-triangle. Raycasting an animated SkinnedMesh in three.js is unreliable
+// (it tests the bind pose / stale bounds), so we do the same projected-AABB test
+// and return the front-most dummy whose box contains the cursor.
+const _pickBox = new THREE.Box3();
+const _pickV = new THREE.Vector3();
+function pickDummy(ndc) {
+  if (!dummies.length) return null;
+  let best = null, bestDepth = Infinity;
+  for (const d of dummies) {
+    if (!d.obj) continue;
+    _pickBox.setFromObject(d.obj);
+    if (_pickBox.isEmpty()) continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, depth = Infinity, front = false;
+    for (let xi = 0; xi < 2; xi++) for (let yi = 0; yi < 2; yi++) for (let zi = 0; zi < 2; zi++) {
+      _pickV.set(xi ? _pickBox.max.x : _pickBox.min.x,
+                 yi ? _pickBox.max.y : _pickBox.min.y,
+                 zi ? _pickBox.max.z : _pickBox.min.z).project(camera);
+      if (_pickV.z >= 1) continue; // corner behind the camera/far plane
+      front = true;
+      if (_pickV.x < minX) minX = _pickV.x;
+      if (_pickV.x > maxX) maxX = _pickV.x;
+      if (_pickV.y < minY) minY = _pickV.y;
+      if (_pickV.y > maxY) maxY = _pickV.y;
+      if (_pickV.z < depth) depth = _pickV.z;
+    }
+    if (!front) continue;
+    if (ndc.x >= minX && ndc.x <= maxX && ndc.y >= minY && ndc.y <= maxY && depth < bestDepth) {
+      bestDepth = depth; best = d;
+    }
+  }
+  return best;
+}
+
+// Screen-space box pick for placed scenery or NPCs.
+function getPlacedMeta(obj) {
+  if (!obj || !obj.userData) return null;
+  if (obj.userData.loc) return { kind: 'loc', ...obj.userData.loc };
+  if (obj.userData.npc) return { kind: 'npc', ...obj.userData.npc };
+  return null;
+}
+
+function npcDisplayName(info) {
+  if (!info) return 'NPC';
+  if (info.name) return info.name;
+  if (info.npcId != null) return npcById[info.npcId]?.name || `NPC #${info.npcId}`;
+  return info.id != null ? `NPC #${info.id}` : 'NPC';
+}
+
+function pickPlacedNpc(ndc) {
+  const lo = pickPlaced(ndc);
+  if (!lo) return null;
+  const info = getPlacedMeta(lo);
+  if (!info || info.kind !== 'npc') return null;
+  return { obj: lo, kind: 'placed', ...info };
+}
+
+function pickChessNpc(ndc) {
+  const pick = chessWorld?.pickPiece?.(ndc, camera);
+  if (!pick) return null;
+  const label = chessWorld.getPieceLabel?.(pick) || pick.type;
+  const name = npcById[pick.npcId]?.name || label;
+  return {
+    kind: 'chess',
+    obj: pick.obj,
+    name,
+    label,
+    sq: pick.sq,
+    tx: pick.tx,
+    tz: pick.tz,
+    npcId: pick.npcId,
+    examine: `${label} (${pick.sq}) — ${name}`,
+  };
+}
+
+/** Pick any clickable NPC: chess piece or editor-placed NPC. */
+function pickNpc(ndc) {
+  const chess = pickChessNpc(ndc);
+  if (chess) return chess;
+  return pickPlacedNpc(ndc);
+}
+
+function setMeshEmissive(obj, hex) {
+  if (!obj) return;
+  obj.traverse(o => {
+    if (o.isMesh && o.material) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m => { if (m.emissive) m.emissive.setHex(hex); });
+    }
+  });
+}
+
+function highlightSelectedNpc() {
+  for (const obj of placedObjects) {
+    const meta = getPlacedMeta(obj);
+    if (meta?.kind !== 'npc') continue;
+    setMeshEmissive(obj, obj === selectedNpcObj ? 0x443300 : 0x000000);
+  }
+  if (chessWorld?.isActive()) {
+    chessWorld.forEachPiece?.((obj) => {
+      setMeshEmissive(obj, obj === selectedNpcObj ? 0x443300 : 0x000000);
+    });
+  }
+}
+
+function selectNpcHit(hit) {
+  selectedNpcObj = hit?.obj || null;
+  highlightSelectedNpc();
+}
+
+function pickPlaced(ndc) {
+  if (!placedObjects.length) return null;
+  let best = null, bestDepth = Infinity;
+  for (const obj of placedObjects) {
+    if (!getPlacedMeta(obj)) continue;
+    _pickBox.setFromObject(obj);
+    if (_pickBox.isEmpty()) continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, depth = Infinity, front = false;
+    for (let xi = 0; xi < 2; xi++) for (let yi = 0; yi < 2; yi++) for (let zi = 0; zi < 2; zi++) {
+      _pickV.set(xi ? _pickBox.max.x : _pickBox.min.x,
+                 yi ? _pickBox.max.y : _pickBox.min.y,
+                 zi ? _pickBox.max.z : _pickBox.min.z).project(camera);
+      if (_pickV.z >= 1) continue;
+      front = true;
+      if (_pickV.x < minX) minX = _pickV.x;
+      if (_pickV.x > maxX) maxX = _pickV.x;
+      if (_pickV.y < minY) minY = _pickV.y;
+      if (_pickV.y > maxY) maxY = _pickV.y;
+      if (_pickV.z < depth) depth = _pickV.z;
+    }
+    if (!front) continue;
+    if (ndc.x >= minX && ndc.x <= maxX && ndc.y >= minY && ndc.y <= maxY && depth < bestDepth) {
+      bestDepth = depth; best = obj;
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Combat feedback: cache sounds, cache hitmark/cross sprites, health bars,
+// 317-style right-click menu + top-left hover text.
+// ---------------------------------------------------------------------------
+let _audioCtx = null;
+function audioCtx() {
+  if (_audioCtx === null) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (_) { _audioCtx = false; }
+  }
+  return _audioCtx || null;
+}
+
+// Play a 377 sound. With a world position it becomes positional: panned by where it
+// is on screen and attenuated by distance from the camera, so e.g. an Ice Barrage
+// impact is heard from where it lands. Without a position it plays flat (UI sounds).
+function playSfx(id, worldPos) {
+  if (id == null) return;
+  const url = `/api/sound/${id}.wav`;
+  const ctx = worldPos ? audioCtx() : null;
+  if (!ctx) {
+    try { const a = new Audio(url); a.volume = 0.55; a.play().catch(() => {}); } catch (_) { /* ignore */ }
+    return;
+  }
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+    const a = new Audio(url);
+    const srcNode = ctx.createMediaElementSource(a);
+    const panNode = ctx.createStereoPanner();
+    const gainNode = ctx.createGain();
+    const wp = new THREE.Vector3(worldPos.x, worldPos.y || 0, worldPos.z);
+    const s = worldToScreen(wp.x, wp.y, wp.z);
+    const w = renderer.domElement.clientWidth || window.innerWidth;
+    panNode.pan.value = Math.max(-1, Math.min(1, (s.x / w) * 2 - 1));
+    const dist = camera.position.distanceTo(wp);
+    gainNode.gain.value = Math.max(0.12, Math.min(0.7, 0.7 * (1 - dist / 2600)));
+    srcNode.connect(panNode).connect(gainNode).connect(ctx.destination);
+    a.play().catch(() => {});
+  } catch (_) {
+    try { const a = new Audio(url); a.volume = 0.5; a.play().catch(() => {}); } catch (e) { /* ignore */ }
+  }
+}
+
+const SPRITE_URL = (name, idx) => `/api/sprite/${name}/${idx}.png`;
+let spriteData = null;
+async function loadSpriteManifest() {
+  const r = await fetchManifestJson('/api/sprites.json', 'sprites');
+  spriteData = r.ok ? (r.data.sprites || {}) : {};
+}
+
+const overlayEl = document.getElementById('worldOverlay');
+const crossEl = document.getElementById('rsCross');
+const hoverEl = document.getElementById('rsHover');
+const menuEl = document.getElementById('rsMenu');
+
+function worldToScreen(x, y, z) {
+  const v = new THREE.Vector3(x, y, z).project(camera);
+  const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+  return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, visible: v.z < 1 };
+}
+
+function applyHit(d, dmg) {
+  d.hp = Math.max(0, d.hp - dmg);
+  d.lastHit = performance.now();
+  spawnSplat(d, dmg);
+  if (d.hp <= 0) {
+    setTimeout(() => { if (dummies.includes(d)) d.hp = d.maxHp; }, 1500);
+  }
+}
+
+// RS stacks up to 4 simultaneous hits at fixed screen offsets (no float, no jitter).
+const SPLAT_OFFSETS = [{ x: 0, y: 0 }, { x: 0, y: -20 }, { x: -15, y: -10 }, { x: 15, y: -10 }];
+const SPLAT_MS = 1400; // 70 client ticks @ 20ms
+
+let chessSplats = [];
+
+function spawnObjectHit(obj, dmg) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const ground = obj.position.y;
+  const midY = box.isEmpty() ? ground + 40 : ground + (box.max.y - ground) * 0.5;
+  const el = document.createElement('div');
+  el.className = 'hitsplat';
+  el.style.backgroundImage = `url(${SPRITE_URL('hitmarks', dmg > 0 ? 1 : 0)})`;
+  const num = document.createElement('img');
+  num.className = 'hsnum';
+  num.src = `/api/font/p11_full.png?text=${encodeURIComponent(String(dmg))}`;
+  el.appendChild(num);
+  overlayEl.appendChild(el);
+  chessSplats.push({ obj, midY, el, born: performance.now(), ox: 0, oy: 0 });
+}
+
+function updateChessSplats() {
+  const now = performance.now();
+  for (let i = chessSplats.length - 1; i >= 0; i--) {
+    const sp = chessSplats[i];
+    const age = now - sp.born;
+    if (age > SPLAT_MS) { sp.el.remove(); chessSplats.splice(i, 1); continue; }
+    const s = worldToScreen(sp.obj.position.x, sp.midY, sp.obj.position.z);
+    sp.el.style.display = s.visible ? 'flex' : 'none';
+    sp.el.style.left = (s.x + sp.ox) + 'px';
+    sp.el.style.top = (s.y + sp.oy) + 'px';
+  }
+}
+
+function clearChessSplats() {
+  for (const sp of chessSplats) sp.el.remove();
+  chessSplats = [];
+}
+
+function fireSpellAtWorld(fromPos, toPos, spell, yaw = 0) {
+  return new Promise(resolve => {
+    const dist = Math.hypot(toPos.x - fromPos.x, toPos.z - fromPos.z) / TILE;
+    const delay = 51, speed = 51 + (-5) + Math.max(1, dist) * 10;
+    if (spell.start) spawnSpotanim(spell.start.id, fromPos, GFX_HEIGHT[spell.start.h] || 0, yaw);
+    const p = {
+      obj: null, mixer: null, added: false, mobile: false,
+      spotId: spell.proj ? spell.proj.id : null,
+      srcX: fromPos.x, srcZ: fromPos.z, srcY: 43 * 4,
+      dstWorld: { x: toPos.x, y: 31 * 4, z: toPos.z },
+      dstTile: toPos, dstY: 31 * 4,
+      arc: 64, peakPitch: 16,
+      startCycle: worldCycle + delay,
+      lastCycle: worldCycle + speed,
+      x: 0, y: 0, z: 0, velX: 0, velZ: 0, velY: 0, accY: 0, vel: 0, yaw: 0, pitch: 0,
+      endGfx: spell.end,
+      onImpact: resolve,
+    };
+    projectiles.push(p);
+    if (spell.proj?.id != null) {
+      makeProjectileEntity(spell.proj.id).then(built => {
+        if (built && projectiles.includes(p)) { p.obj = built.obj; p.mixer = built.mixer; }
+      });
+    }
+  });
+}
+
+function createChessFx() {
+  return {
+    spawnGfx: (pos, id, h, yaw) => spawnSpotanim(id, pos, GFX_HEIGHT[h] || 0, yaw),
+    castSpellAt: (fromPos, toPos, spell, yaw) => fireSpellAtWorld(fromPos, toPos, spell, yaw),
+    spawnHit: (obj, dmg) => spawnObjectHit(obj, dmg),
+    updateHits: () => updateChessSplats(),
+    clearHits: () => clearChessSplats(),
+    delay: (ms) => new Promise(r => setTimeout(r, ms)),
+  };
+}
+
+function spawnSplat(d, dmg) {
+  const el = document.createElement('div');
+  el.className = 'hitsplat';
+  // type 0 = blue (miss/0), type 1 = red (damage); the number is always white.
+  el.style.backgroundImage = `url(${SPRITE_URL('hitmarks', dmg > 0 ? 1 : 0)})`;
+  // Damage drawn with the real 317 font (p11_full): white glyphs + 1px black shadow,
+  // rendered server-side from the title archive so it matches the client exactly.
+  const num = document.createElement('img');
+  num.className = 'hsnum';
+  num.src = `/api/font/p11_full.png?text=${encodeURIComponent(String(dmg))}`;
+  el.appendChild(num);
+  overlayEl.appendChild(el);
+  const off = SPLAT_OFFSETS[Math.min(d.splats.length, SPLAT_OFFSETS.length - 1)];
+  d.splats.push({ el, born: performance.now(), ox: off.x, oy: off.y });
+}
+
+function ensureHpBar(d) {
+  if (d.hpEl) return;
+  const bar = document.createElement('div');
+  bar.className = 'hpbar';
+  const fill = document.createElement('i');
+  bar.appendChild(fill);
+  overlayEl.appendChild(bar);
+  d.hpEl = bar; d.hpFill = fill;
+}
+
+function updateOverlay() {
+  const now = performance.now();
+  for (const d of dummies) {
+    if (!d.obj) continue;
+    const showBar = d.hp < d.maxHp || (now - d.lastHit) < 6000;
+    if (showBar) {
+      ensureHpBar(d);
+      const s = worldToScreen(d.obj.position.x, d.headY + 15, d.obj.position.z);
+      if (s.visible) {
+        d.hpEl.style.display = 'block';
+        d.hpEl.style.left = s.x + 'px';
+        d.hpEl.style.top = s.y + 'px';
+        d.hpFill.style.width = Math.round((d.hp / d.maxHp) * 100) + '%';
+      } else { d.hpEl.style.display = 'none'; }
+    } else if (d.hpEl) { d.hpEl.style.display = 'none'; }
+
+    for (let i = d.splats.length - 1; i >= 0; i--) {
+      const sp = d.splats[i];
+      const age = now - sp.born;
+      if (age > SPLAT_MS) { sp.el.remove(); d.splats.splice(i, 1); continue; }
+      // Reproject onto the entity every frame; the splat does NOT float upward.
+      const s = worldToScreen(d.obj.position.x, d.midY, d.obj.position.z);
+      sp.el.style.display = s.visible ? 'flex' : 'none';
+      sp.el.style.left = (s.x + sp.ox) + 'px';
+      sp.el.style.top = (s.y + sp.oy) + 'px';
+    }
+  }
+}
+
+// Click crosses: mode 1 = yellow (walk, frames 0-3), mode 2 = red (interact, 4-7).
+let crossMode = 0, crossStart = 0, crossCX = 0, crossCY = 0;
+function showCross(mode, clientX, clientY) {
+  crossMode = mode; crossStart = performance.now(); crossCX = clientX; crossCY = clientY;
+  crossEl.style.display = 'block';
+}
+function updateCross() {
+  if (!crossMode) { crossEl.style.display = 'none'; return; }
+  const t = performance.now() - crossStart;
+  if (t >= 400) { crossMode = 0; crossEl.style.display = 'none'; return; }
+  const frame = Math.min(3, Math.floor(t / 100)) + (crossMode === 2 ? 4 : 0);
+  crossEl.style.backgroundImage = `url(${SPRITE_URL('cross', frame)})`;
+  crossEl.style.left = crossCX + 'px';
+  crossEl.style.top = crossCY + 'px';
+}
+
+function ndcFromEvent(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  return new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+}
+
+function tileFromEvent(e) {
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndcFromEvent(e), camera);
+  const hits = ray.intersectObject(pickPlane, false);
+  if (!hits.length) return null;
+  const p = hits[0].point;
+  return { x: clampTile(Math.floor((p.x + HALF) / TILE)), z: clampTile(Math.floor((p.z + HALF) / TILE)) };
+}
+
+// 317-style right-click menu.
+function openMenu(x, y, opts) {
+  menuEl.innerHTML = '';
+  const hdr = document.createElement('div');
+  hdr.className = 'hdr';
+  hdr.textContent = 'Choose Option';
+  menuEl.appendChild(hdr);
+  for (const o of opts) {
+    const row = document.createElement('div');
+    row.className = 'opt';
+    row.innerHTML = o.label;
+    // Pass the option-click event so the cross lands where the mouse actually clicked.
+    row.addEventListener('click', (ev) => { closeMenu(); o.act && o.act(ev); });
+    menuEl.appendChild(row);
+  }
+  menuEl.style.display = 'block';
+  const w = menuEl.offsetWidth, h = menuEl.offsetHeight;
+  menuEl.style.left = Math.min(x, window.innerWidth - w - 2) + 'px';
+  menuEl.style.top = Math.min(y, window.innerHeight - h - 2) + 'px';
+}
+function closeMenu() { menuEl.style.display = 'none'; }
+
+renderer.domElement.addEventListener('contextmenu', e => {
+  if (!worldActive) return;
+  e.preventDefault();
+  const ndc = ndcFromEvent(e);
+  const d = pickDummy(ndc);
+  const npc = d ? null : pickNpc(ndc);
+  const lo = (d || npc) ? null : pickPlaced(ndc);
+  const opts = [];
+  // The target tile/dummy comes from the right-click (e); the cross is drawn at the
+  // option-click (ev) so the red/yellow X appears where the mouse was when clicked.
+  if (d) {
+    opts.push({ label: `Attack <span style="color:#ff0">${d.name}</span>`, act: (ev) => { selectedTarget = d; highlightTarget(); showCross(2, ev.clientX, ev.clientY); combatStatusEl.textContent = `Targeting ${d.name}.`; } });
+  }
+  if (npc) {
+    selectNpcHit(npc);
+    const nm = npcDisplayName(npc);
+    worldStatusEl.textContent = nm + (npc.sq ? ` (${npc.sq})` : '');
+    opts.push({ label: `Examine <span style="color:#ff0">${nm}</span>`, act: () => {
+      worldStatusEl.textContent = npc.examine || `It's ${nm}.`;
+    } });
+  }
+  // Loc interactions (Open, Search, ...) come first in 317, each over the cyan name.
+  if (lo) {
+    const info = getPlacedMeta(lo);
+    if (info.kind === 'loc') {
+      for (const action of (info.actions || [])) {
+        opts.push({ label: `${action} <span style="color:#0ff">${info.name}</span>`, act: (ev) => { showCross(1, ev.clientX, ev.clientY); worldStatusEl.textContent = `${action} ${info.name} (#${info.id}).`; } });
+      }
+    }
+  }
+  opts.push({ label: 'Walk here', act: (ev) => { const t = tileFromEvent(e); if (t) { startWalkTo(t.x, t.z); showCross(1, ev.clientX, ev.clientY); } } });
+  if (d) {
+    opts.push({ label: `Examine <span style="color:#ff0">${d.name}</span>`, act: () => { combatStatusEl.textContent = 'A practice dummy for testing combat.'; } });
+  }
+  if (lo) {
+    const info = getPlacedMeta(lo);
+    opts.push({ label: `Examine <span style="color:#0ff">${info.name}</span>`, act: () => { worldStatusEl.textContent = info.examine || `It's ${info.name}.`; } });
+  }
+  opts.push({ label: 'Cancel', act: () => {} });
+  openMenu(e.clientX, e.clientY, opts);
+});
+window.addEventListener('pointerdown', e => {
+  if (menuEl.style.display === 'block' && !menuEl.contains(e.target)) closeMenu();
+});
+// 317 closes the right-click menu as soon as the cursor leaves its bounds (with a
+// small tolerance margin), rather than waiting for a click elsewhere.
+window.addEventListener('pointermove', e => {
+  if (menuEl.style.display !== 'block') return;
+  const r = menuEl.getBoundingClientRect();
+  const m = 10;
+  if (e.clientX < r.left - m || e.clientX > r.right + m ||
+      e.clientY < r.top - m || e.clientY > r.bottom + m) {
+    closeMenu();
+  }
+});
+
+// Top-left hover interaction text (white action + yellow target), 317 style.
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!worldActive || menuEl.style.display === 'block') { hoverEl.style.display = 'none'; hideGhost(); return; }
+  const ndc = ndcFromEvent(e);
+  const d = pickDummy(ndc);
+  const npc = d ? null : pickNpc(ndc);
+  const lo = (d || npc) ? null : pickPlaced(ndc);
+  if (deleteMode) {
+    if (lo) {
+      const info = getPlacedMeta(lo);
+      hoverEl.innerHTML = `<span style="color:#ff4136">Delete</span> <span style="color:#0ff">${info.name}</span>`;
+      hoverEl.style.display = 'block';
+    } else hoverEl.style.display = 'none';
+    hideGhost();
+    return;
+  }
+  if (d) {
+    hoverEl.innerHTML = `<span style="color:#fff">Attack</span> <span style="color:#ff0">${d.name}</span>`;
+    hoverEl.style.display = 'block';
+  } else if (npc) {
+    const nm = npcDisplayName(npc);
+    hoverEl.innerHTML = `<span style="color:#fff">Examine</span> <span style="color:#ff0">${nm}</span>`;
+    hoverEl.style.display = 'block';
+  } else if (lo) {
+    const info = getPlacedMeta(lo);
+    if (info.kind === 'loc' && info.actions && info.actions.length) {
+      hoverEl.innerHTML = `<span style="color:#fff">${info.actions[0]}</span> <span style="color:#0ff">${info.name}</span>`;
+    } else {
+      hoverEl.innerHTML = `<span style="color:#fff">Examine</span> <span style="color:${info.kind === 'npc' ? '#ff0' : '#0ff'}">${info.name}</span>`;
+    }
+    hoverEl.style.display = 'block';
+  } else {
+    hoverEl.innerHTML = `<span style="color:#fff">Walk here</span>`;
+    hoverEl.style.display = 'block';
+  }
+  // Ghost preview while placing scenery or NPCs.
+  if (placeMode && !paintMode && hasPlaceSelection()) {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, camera);
+    const hits = ray.intersectObject(pickPlane, false);
+    if (hits.length) {
+      const p = hits[0].point;
+      updateGhostAt(clampTile(Math.floor((p.x + HALF) / TILE)), clampTile(Math.floor((p.z + HALF) / TILE)));
+    } else hideGhost();
+  } else hideGhost();
+});
+renderer.domElement.addEventListener('pointerleave', () => { hoverEl.style.display = 'none'; hideGhost(); });
+
+// Pointer: distinguish orbit-drag from a click-to-walk / click-to-place.
+let downPos = null;
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (e.button === 0) downPos = { x: e.clientX, y: e.clientY };
+});
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!worldActive || e.button !== 0 || !downPos) { downPos = null; return; }
+  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+  downPos = null;
+  if (moved > 5) return; // it was a camera drag
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  // Delete tool: click a placed object to remove it (undoable).
+  if (deleteMode) {
+    const lo = pickPlaced(ndc);
+    if (lo) {
+      const u = getPlacedMeta(lo);
+      removePlacedObj(lo);
+      recordDelete({ kind: u.kind, id: u.id, tx: u.tile.x, tz: u.tile.z, rot: u.rot || 0 });
+      worldStatusEl.textContent = `Deleted ${u.name || ('#' + u.id)}.`;
+    } else {
+      worldStatusEl.textContent = 'Nothing there to delete.';
+    }
+    return;
+  }
+  if (!placeMode && !paintMode) {
+    const d = pickDummy(ndc);
+    if (d) {
+      selectedTarget = d;
+      highlightTarget();
+      showCross(2, e.clientX, e.clientY);
+      combatStatusEl.textContent = `Targeting ${d.name} at (${d.tile.x}, ${d.tile.z}).`;
+      return;
+    }
+    const npc = pickNpc(ndc);
+    if (npc) {
+      selectNpcHit(npc);
+      showCross(2, e.clientX, e.clientY);
+      const nm = npcDisplayName(npc);
+      if (npc.kind === 'chess' && chessWorld?.isActive()) {
+        chessWorld.handleClick(npc.tx, npc.tz);
+        worldStatusEl.textContent = `${nm} (${npc.sq || ''})`;
+      } else {
+        worldStatusEl.textContent = `Selected ${nm}.`;
+      }
+      return;
+    }
+  }
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObject(pickPlane, false);
+  if (!hits.length) return;
+  const p = hits[0].point;
+  const tx = clampTile(Math.floor((p.x + HALF) / TILE));
+  const tz = clampTile(Math.floor((p.z + HALF) / TILE));
+  if (chessWorld?.isActive() && chessWorld.isBoardTile(tx, tz)) {
+    chessWorld.handleClick(tx, tz);
+    showCross(1, e.clientX, e.clientY);
+    return;
+  }
+  if (paintMode) {
+    const key = tx * GRID + tz;
+    const prev = tilePaint[key] ? { ...tilePaint[key] } : null;
+    applyTilePaint(tx, tz, paintColorEl.value, selectedTexId);
+    const next = tilePaint[key] ? { ...tilePaint[key] } : null;
+    recordPaint(tx, tz, prev, next);
+    worldStatusEl.textContent = `Painted tile (${tx}, ${tz}) ` +
+      (selectedTexId != null ? `texture #${selectedTexId}.` : paintColorEl.value + '.');
+  } else if (placeMode) {
+    placeAtTile(tx, tz);
+  } else {
+    startWalkTo(tx, tz);
+    showCross(1, e.clientX, e.clientY);
+  }
+});
+
+function highlightTarget() {
+  for (const d of dummies) {
+    d.obj.traverse(o => {
+      if (o.isMesh && o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => { m.emissive && m.emissive.setHex(d === selectedTarget ? 0x442200 : 0x000000); });
+      }
+    });
+  }
+}
+
+document.querySelectorAll('.castBtn').forEach(b =>
+  b.addEventListener('click', () => castSpell(b.dataset.spell)));
+document.querySelectorAll('.shootBtn').forEach(b =>
+  b.addEventListener('click', () => shootArrow(b.dataset.arrow)));
+addDummyBtn.addEventListener('click', () => {
+  const tx = 2 + Math.floor(Math.random() * (GRID - 4));
+  const tz = 8 + Math.floor(Math.random() * (GRID - 9));
+  spawnDummy(tx, tz);
+});
+clearDummiesBtn.addEventListener('click', () => {
+  dummies.forEach(d => {
+    scene.remove(d.obj); d.obj.traverse(x => { if (x.geometry) x.geometry.dispose(); });
+    if (d.hpEl) d.hpEl.remove();
+    d.splats.forEach(s => s.el.remove());
+  });
+  dummies = []; selectedTarget = null;
+  combatStatusEl.textContent = 'Dummies cleared.';
+});
+runBtn.addEventListener('click', () => {
+  running = !running;
+  runBtn.textContent = 'Run: ' + (running ? 'on' : 'off');
+  runBtn.style.fontWeight = running ? 'bold' : 'normal';
+});
+
+// Core placement used by Place-mode clicks, the console helper and map import.
+function placeLocAt(id, tx, tz, rot, meta) {
+  rot = rot || 0;
+  const url = `/api/loc/${id}.glb?rot=${rot}&t=${Date.now()}`;
+  return new Promise((resolve) => {
+    loader.load(url, gltf => {
+      if (!worldActive) { resolve(null); return; }
+      const obj = gltf.scene;
+      applyWire(obj);
+      obj.position.copy(tileToScene(tx, tz));
+      const m = meta || locById[id] || {};
+      obj.userData.loc = {
+        id,
+        name: m.name || `loc_${id}`,
+        actions: m.actions || [],
+        examine: m.examine || '',
+        tile: { x: tx, z: tz },
+        rot,
+      };
+      scene.add(obj);
+      placedObjects.push(obj);
+      attachPlacedAnim(obj, gltf);
+      resolve(obj);
+    }, undefined, err => { worldStatusEl.textContent = 'Place failed: ' + err; resolve(null); });
+  });
+}
+
+function placeSceneryAt(tx, tz) {
+  if (!selectedLoc) {
+    worldStatusEl.textContent = 'Search and pick a scenery entry first.';
+    return;
+  }
+  const id = selectedLoc.id, rot = selectedLoc.rot || 0, name = selectedLoc.name;
+  placeLocAt(id, tx, tz, rot, selectedLoc).then(obj => {
+    if (obj) {
+      recordPlace(obj, { kind: 'loc', id, tx, tz, rot });
+      worldStatusEl.textContent = `Placed ${name || ('#' + id)} at (${tx}, ${tz})` +
+        (obj.userData.mixer ? ' (animated).' : '.');
+    }
+  });
+}
+
+function placedRotY(rot) {
+  return (rot || 0) * (Math.PI / 2);
+}
+
+function attachPlacedAnim(obj, gltf) {
+  if (!gltf.animations || !gltf.animations.length) return false;
+  const mixer = new THREE.AnimationMixer(obj);
+  const clip = gltf.animations.find(c => c.name === 'idle') || gltf.animations[0];
+  tuneClipInterp(clip);
+  mixer.clipAction(clip).setLoop(THREE.LoopRepeat).play();
+  obj.userData.mixer = mixer;
+  placedMixers.push(mixer);
+  return true;
+}
+
+function placeNpcAt(id, tx, tz, rot, meta) {
+  rot = rot || 0;
+  const url = `/api/npc/${id}.glb?t=${Date.now()}`;
+  return new Promise((resolve) => {
+    loader.load(url, gltf => {
+      if (!worldActive) { resolve(null); return; }
+      const obj = gltf.scene;
+      applyWire(obj);
+      obj.position.copy(tileToScene(tx, tz));
+      obj.rotation.y = placedRotY(rot);
+      const m = meta || npcById[id] || {};
+      obj.userData.npc = {
+        id,
+        name: m.name || `npc_${id}`,
+        tile: { x: tx, z: tz },
+        rot,
+      };
+      scene.add(obj);
+      placedObjects.push(obj);
+      attachPlacedAnim(obj, gltf);
+      resolve(obj);
+    }, undefined, err => { worldStatusEl.textContent = 'NPC place failed: ' + err; resolve(null); });
+  });
+}
+
+function placeNpcAtTile(tx, tz) {
+  if (!selectedNpc) {
+    worldStatusEl.textContent = 'Search and pick an NPC first.';
+    return;
+  }
+  const id = selectedNpc.id, rot = selectedNpc.rot || 0, name = selectedNpc.name;
+  placeNpcAt(id, tx, tz, rot, selectedNpc).then(obj => {
+    if (obj) {
+      recordPlace(obj, { kind: 'npc', id, tx, tz, rot });
+      worldStatusEl.textContent = `Placed ${name || ('#' + id)} at (${tx}, ${tz}).`;
+    }
+  });
+}
+
+function hasPlaceSelection() {
+  return placeKind === 'npc' ? !!selectedNpc : !!selectedLoc;
+}
+
+function placeAtTile(tx, tz) {
+  if (placeKind === 'npc') placeNpcAtTile(tx, tz);
+  else placeSceneryAt(tx, tz);
+}
+
+// --- Tile painting (colour + ground texture), recorded for map export ---
+function getTileTexture(texId) {
+  if (!texCache[texId]) {
+    const t = new THREE.TextureLoader().load(`/api/texture/${texId}.png`);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    texCache[texId] = t;
+  }
+  return texCache[texId];
+}
+function applyTilePaint(tx, tz, color, texId) {
+  const key = tx * GRID + tz;
+  const m = tileMeshes[key];
+  if (!m) return;
+  if (texId) {
+    m.material.map = getTileTexture(texId);
+    m.material.color.set('#ffffff'); // let the texture show its true colours
+  } else {
+    m.material.map = null;
+    m.material.color.set(color || tileBaseColor(tx, tz));
+  }
+  m.material.needsUpdate = true;
+  if (!texId && !color) delete tilePaint[key];
+  else tilePaint[key] = { color: texId ? null : (color || null), tex: texId || null };
+}
+function populateTextureSelect() {
+  if (!paintTexGridEl) return;
+  paintTexGridEl.innerHTML = '';
+  const mkCell = (id, title) => {
+    const cell = document.createElement('div');
+    cell.title = title;
+    cell.dataset.tex = id == null ? '' : String(id);
+    cell.style.cssText = 'width:32px;height:32px;cursor:pointer;border:2px solid transparent;' +
+      'box-sizing:border-box;background:#000;display:flex;align-items:center;justify-content:center;' +
+      'font-size:14px;color:#9c917d;';
+    if (id == null) { cell.textContent = '\u2715'; cell.style.background = '#2a2620'; cell.title = 'No texture \u2013 paint with colour'; }
+    else {
+      const img = document.createElement('img');
+      img.src = `/api/texture/${id}.png`;
+      img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;';
+      cell.appendChild(img);
+    }
+    cell.addEventListener('click', () => selectTexture(id, true));
+    paintTexGridEl.appendChild(cell);
+  };
+  mkCell(null, 'No texture (paint with colour)');
+  for (const t of allTextures) mkCell(t.id, `texture #${t.id}`);
+  selectTexture(selectedTexId, false); // re-apply highlight only
+}
+function selectTexture(id, interactive) {
+  selectedTexId = (id == null || id === '') ? null : id;
+  for (const cell of paintTexGridEl.children) {
+    const key = selectedTexId == null ? '' : String(selectedTexId);
+    cell.style.borderColor = cell.dataset.tex === key ? '#caa54a' : 'transparent';
+  }
+  paintTexLabelEl.textContent = selectedTexId == null ? '(none \u2014 colour)' : `(#${selectedTexId})`;
+  if (interactive) { setPaintMode(true); setPlaceMode(false); setDeleteMode(false); }
+}
+
+// --- In-world scenery picker (no need to leave World mode) ---
+function renderWorldLocList(filter) {
+  if (!worldLocListEl) return;
+  const q = (filter || '').trim().toLowerCase();
+  const matches = !q ? allLocs : allLocs.filter(l =>
+    (l.name || '').toLowerCase().includes(q) || String(l.id).includes(q));
+  worldLocListEl.innerHTML = '';
+  for (const l of matches.slice(0, 300)) {
+    const o = document.createElement('option');
+    o.value = String(l.id);
+    o.textContent = `${l.name || 'unnamed'} (#${l.id})`;
+    worldLocListEl.appendChild(o);
+  }
+  worldLocSelEl.textContent = `${matches.length} match${matches.length === 1 ? '' : 'es'}` +
+    (matches.length > 300 ? ' (showing 300)' : '') + '.';
+}
+function selectWorldLoc(id) {
+  const meta = locById[id] || {};
+  selectedLoc = {
+    id,
+    rot: parseInt(worldLocRotEl.value, 10) || 0,
+    name: meta.name || `loc_${id}`,
+    actions: meta.actions || [],
+    examine: meta.examine || '',
+  };
+  selectedNpc = null;
+  worldLocSelEl.textContent = `Selected: ${selectedLoc.name} (#${id}). Enable Place and click a tile.`;
+  setPlaceMode(true);
+  setPaintMode(false);
+}
+
+function renderWorldNpcList(filter) {
+  if (!worldNpcListEl) return;
+  const q = (filter || '').trim().toLowerCase();
+  const matches = !q ? allNpcs : allNpcs.filter(n =>
+    (n.name || '').toLowerCase().includes(q) || String(n.id).includes(q));
+  worldNpcListEl.innerHTML = '';
+  for (const n of matches.slice(0, 300)) {
+    const o = document.createElement('option');
+    o.value = String(n.id);
+    o.textContent = `${n.name || 'unnamed'} (#${n.id})`;
+    worldNpcListEl.appendChild(o);
+  }
+  worldNpcSelEl.textContent = `${matches.length} match${matches.length === 1 ? '' : 'es'}` +
+    (matches.length > 300 ? ' (showing 300)' : '') + '.';
+}
+
+function selectWorldNpc(id) {
+  const meta = npcById[id] || {};
+  selectedNpc = {
+    id,
+    rot: parseInt(worldNpcRotEl.value, 10) || 0,
+    name: meta.name || `npc_${id}`,
+  };
+  selectedLoc = null;
+  worldNpcSelEl.textContent = `Selected: ${selectedNpc.name} (#${id}). Enable Place and click a tile.`;
+  setPlaceMode(true);
+  setPaintMode(false);
+}
+
+function setPlaceKind(kind) {
+  placeKind = kind;
+  if (placeKindLocBtn) placeKindLocBtn.classList.toggle('tgl-on', kind === 'loc');
+  if (placeKindNpcBtn) placeKindNpcBtn.classList.toggle('tgl-on', kind === 'npc');
+  if (placeLocPanel) placeLocPanel.style.display = kind === 'loc' ? '' : 'none';
+  if (placeNpcPanel) placeNpcPanel.style.display = kind === 'npc' ? '' : 'none';
+  disposeGhost();
+}
+
+// --- Map export / import ---
+function exportMap() {
+  const objects = placedObjects
+    .filter(o => o.userData && o.userData.loc)
+    .map(o => ({ id: o.userData.loc.id, tx: o.userData.loc.tile.x, tz: o.userData.loc.tile.z, rot: o.userData.loc.rot || 0 }));
+  const npcs = placedObjects
+    .filter(o => o.userData && o.userData.npc)
+    .map(o => ({ id: o.userData.npc.id, tx: o.userData.npc.tile.x, tz: o.userData.npc.tile.z, rot: o.userData.npc.rot || 0 }));
+  const tiles = Object.keys(tilePaint).map(k => {
+    const i = parseInt(k, 10);
+    return { tx: Math.floor(i / GRID), tz: i % GRID, color: tilePaint[k].color, tex: tilePaint[k].tex };
+  });
+  const map = { format: 'rs-sandbox-map', version: 1, grid: GRID, tile: TILE, objects, npcs, tiles };
+  const blob = new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `rs-map-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  worldStatusEl.textContent = `Exported ${objects.length} objects, ${npcs.length} NPCs, ${tiles.length} painted tiles.`;
+}
+async function importMap(text) {
+  let map;
+  try { map = JSON.parse(text); } catch (e) { worldStatusEl.textContent = 'Import failed: bad JSON.'; return; }
+  if (!map || map.format !== 'rs-sandbox-map') { worldStatusEl.textContent = 'Import failed: not a sandbox map.'; return; }
+  // Clear current scene contents.
+  placedObjects.forEach(o => { scene.remove(o); o.traverse(x => { if (x.geometry) x.geometry.dispose(); }); });
+  placedObjects = []; placedMixers = [];
+  for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++) {
+    const mm = tileMeshes[x * GRID + z];
+    if (mm) { mm.material.map = null; mm.material.color.set(tileBaseColor(x, z)); mm.material.needsUpdate = true; }
+  }
+  tilePaint = {};
+  clearHistory();
+  for (const t of (map.tiles || [])) {
+    if (t.tx < GRID && t.tz < GRID) applyTilePaint(t.tx, t.tz, t.color, t.tex);
+  }
+  let placed = 0;
+  for (const o of (map.objects || [])) {
+    if (o.tx < GRID && o.tz < GRID) { await placeLocAt(o.id, o.tx, o.tz, o.rot || 0); placed++; }
+  }
+  let npcCount = 0;
+  for (const n of (map.npcs || [])) {
+    if (n.tx < GRID && n.tz < GRID) { await placeNpcAt(n.id, n.tx, n.tz, n.rot || 0); npcCount++; }
+  }
+  worldStatusEl.textContent = `Imported ${placed} objects, ${npcCount} NPCs, ${(map.tiles || []).length} tiles.`;
+}
+
+function setPaintMode(on) {
+  paintMode = on;
+  paintBtn.classList.toggle('tgl-on', paintMode);
+  if (paintMode && paintSection) paintSection.open = true;
+  if (!paintMode) hideGhost();
+}
+function setPlaceMode(on) {
+  placeMode = on;
+  placeBtn.classList.toggle('tgl-on', placeMode);
+  if (placeMode && placeSection) placeSection.open = true;
+  if (!placeMode) hideGhost();
+}
+function setDeleteMode(on) {
+  deleteMode = on;
+  deleteBtn.classList.toggle('tgl-on', deleteMode);
+  if (deleteMode) hideGhost();
+}
+// Place / Paint / Delete are mutually exclusive editing tools.
+placeBtn.addEventListener('click', () => {
+  const on = !placeMode;
+  setPlaceMode(on);
+  if (on) { setPaintMode(false); setDeleteMode(false); }
+});
+paintBtn.addEventListener('click', () => {
+  const on = !paintMode;
+  setPaintMode(on);
+  if (on) { setPlaceMode(false); setDeleteMode(false); }
+});
+deleteBtn.addEventListener('click', () => {
+  const on = !deleteMode;
+  setDeleteMode(on);
+  if (on) {
+    setPlaceMode(false); setPaintMode(false);
+    worldStatusEl.textContent = 'Delete: click a placed object to remove it.';
+  }
+});
+// Picking a colour swatch switches to colour painting (clears any chosen texture).
+paintColorEl.addEventListener('input', () => selectTexture(null, true));
+
+// --- Ghost preview: a translucent copy of the selected scenery that tracks the
+// cursor over tiles, rotatable with the mouse wheel before committing. ---
+let ghostObj = null, ghostKey = '', ghostLoading = '', ghostTile = null, ghostVisible = false;
+function hideGhost() {
+  if (ghostObj) ghostObj.visible = false;
+  ghostVisible = false;
+  controls.enableZoom = true;
+}
+function disposeGhost() {
+  if (!ghostObj) return;
+  scene.remove(ghostObj);
+  ghostObj.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
+  });
+  ghostObj = null; ghostKey = '';
+}
+function ensureGhost(kind, id, rot) {
+  const key = kind + ':' + id + ':' + rot;
+  if (ghostKey === key || ghostLoading === key) return;
+  ghostLoading = key;
+  const url = kind === 'npc'
+    ? `/api/npc/${id}.glb?t=${Date.now()}`
+    : `/api/loc/${id}.glb?rot=${rot}&t=${Date.now()}`;
+  loader.load(url, gltf => {
+    if (ghostLoading !== key || !worldActive) { ghostLoading = ''; return; }
+    ghostLoading = '';
+    disposeGhost();
+    const obj = gltf.scene;
+    if (kind === 'npc') obj.rotation.y = placedRotY(rot);
+    obj.traverse(o => {
+      if (o.isMesh && o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        const cloned = mats.map(m => { const c = m.clone(); c.transparent = true; c.opacity = 0.45; c.depthWrite = false; return c; });
+        o.material = Array.isArray(o.material) ? cloned : cloned[0];
+        o.raycast = () => {};
+      }
+    });
+    obj.visible = ghostVisible;
+    if (ghostTile) obj.position.copy(tileToScene(ghostTile.x, ghostTile.z));
+    scene.add(obj);
+    ghostObj = obj; ghostKey = key;
+  }, undefined, () => { ghostLoading = ''; });
+}
+function updateGhostAt(tx, tz) {
+  if (!placeMode || paintMode || !hasPlaceSelection()) { hideGhost(); return; }
+  ghostTile = { x: tx, z: tz };
+  if (placeKind === 'npc') {
+    ensureGhost('npc', selectedNpc.id, selectedNpc.rot || 0);
+  } else {
+    ensureGhost('loc', selectedLoc.id, selectedLoc.rot || 0);
+  }
+  if (ghostObj) { ghostObj.position.copy(tileToScene(tx, tz)); ghostObj.visible = true; }
+  ghostVisible = true;
+  controls.enableZoom = false;
+}
+// Mouse wheel rotates the pending placement (and ghost) by 90° steps.
+renderer.domElement.addEventListener('wheel', e => {
+  if (!worldActive || !placeMode || paintMode || !hasPlaceSelection() || !ghostVisible) return;
+  e.preventDefault();
+  const rot = ((placeKind === 'npc' ? selectedNpc.rot : selectedLoc.rot) || 0) + (e.deltaY > 0 ? 1 : 3) & 3;
+  if (placeKind === 'npc') {
+    selectedNpc.rot = rot;
+    worldNpcRotEl.value = String(rot);
+    ensureGhost('npc', selectedNpc.id, rot);
+  } else {
+    selectedLoc.rot = rot;
+    worldLocRotEl.value = String(rot);
+    ensureGhost('loc', selectedLoc.id, rot);
+  }
+  worldStatusEl.textContent = `Rotation ${rot * 90}° (scroll to rotate, click to place).`;
+}, { passive: false });
+
+// --- Undo / redo for interactive edits (place, paint, delete). Each record
+// carries do() + undo() closures so the same machinery drives both stacks. ---
+let undoStack = [];
+let redoStack = [];
+function clearHistory() { undoStack = []; redoStack = []; }
+function pushHistory(rec) {
+  undoStack.push(rec);
+  if (undoStack.length > 200) undoStack.shift();
+  redoStack = [];
+}
+function removePlacedObj(obj) {
+  if (!obj) return;
+  const i = placedObjects.indexOf(obj);
+  if (i >= 0) placedObjects.splice(i, 1);
+  if (obj.userData.mixer) {
+    const mi = placedMixers.indexOf(obj.userData.mixer);
+    if (mi >= 0) placedMixers.splice(mi, 1);
+  }
+  scene.remove(obj);
+  obj.traverse(x => { if (x.geometry) x.geometry.dispose(); });
+}
+function applyPaintState(tx, tz, s) {
+  if (s) applyTilePaint(tx, tz, s.color, s.tex);
+  else applyTilePaint(tx, tz, null, null);
+}
+// Record a placement (object already in the scene). holder.ref tracks the live
+// object so undo/redo always act on the current instance.
+function recordPlace(obj, info) {
+  const holder = { ref: obj };
+  const placeFn = info.kind === 'npc'
+    ? () => placeNpcAt(info.id, info.tx, info.tz, info.rot)
+    : () => placeLocAt(info.id, info.tx, info.tz, info.rot);
+  pushHistory({
+    undo: () => { removePlacedObj(holder.ref); },
+    redo: async () => { holder.ref = await placeFn(); },
+  });
+}
+function recordPaint(tx, tz, prev, next) {
+  pushHistory({
+    undo: () => applyPaintState(tx, tz, prev),
+    redo: () => applyPaintState(tx, tz, next),
+  });
+}
+// Record a deletion (object already removed from the scene).
+function recordDelete(info) {
+  const holder = { ref: null };
+  const placeFn = info.kind === 'npc'
+    ? () => placeNpcAt(info.id, info.tx, info.tz, info.rot)
+    : () => placeLocAt(info.id, info.tx, info.tz, info.rot);
+  pushHistory({
+    undo: async () => { holder.ref = await placeFn(); },
+    redo: () => { removePlacedObj(holder.ref); },
+  });
+}
+async function undo() {
+  const rec = undoStack.pop();
+  if (!rec) { worldStatusEl.textContent = 'Nothing to undo.'; return; }
+  await rec.undo();
+  redoStack.push(rec);
+  worldStatusEl.textContent = `Undone. ${undoStack.length} undo / ${redoStack.length} redo.`;
+}
+async function redo() {
+  const rec = redoStack.pop();
+  if (!rec) { worldStatusEl.textContent = 'Nothing to redo.'; return; }
+  await rec.redo();
+  undoStack.push(rec);
+  worldStatusEl.textContent = `Redone. ${undoStack.length} undo / ${redoStack.length} redo.`;
+}
+undoBtn.addEventListener('click', undo);
+redoBtn.addEventListener('click', redo);
+window.addEventListener('keydown', e => {
+  if (!worldActive || !(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && e.shiftKey) { e.preventDefault(); redo(); }
+  else if (k === 'z') { e.preventDefault(); undo(); }
+  else if (k === 'y') { e.preventDefault(); redo(); }
+});
+function setCameraLock(on) {
+  cameraLock = on;
+  camLockBtn.textContent = 'Camera: ' + (cameraLock ? 'locked' : 'free');
+  camLockBtn.style.fontWeight = cameraLock ? 'bold' : 'normal';
+  if (cameraLock) updateCameraFollow(); // snap onto the player immediately
+}
+camLockBtn.addEventListener('click', () => setCameraLock(!cameraLock));
+resetTilesBtn.addEventListener('click', () => {
+  for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++) {
+    const m = tileMeshes[x * GRID + z];
+    if (m) { m.material.map = null; m.material.color.set(tileBaseColor(x, z)); m.material.needsUpdate = true; }
+  }
+  tilePaint = {};
+  clearHistory();
+  worldStatusEl.textContent = 'Tiles reset.';
+});
+worldLocSearchEl.addEventListener('input', () => renderWorldLocList(worldLocSearchEl.value));
+worldLocListEl.addEventListener('change', () => {
+  const id = parseInt(worldLocListEl.value, 10);
+  if (!Number.isNaN(id)) selectWorldLoc(id);
+});
+worldLocRotEl.addEventListener('change', () => {
+  if (selectedLoc) selectedLoc.rot = parseInt(worldLocRotEl.value, 10) || 0;
+});
+worldNpcSearchEl.addEventListener('input', () => renderWorldNpcList(worldNpcSearchEl.value));
+worldNpcListEl.addEventListener('change', () => {
+  const id = parseInt(worldNpcListEl.value, 10);
+  if (!Number.isNaN(id)) selectWorldNpc(id);
+});
+worldNpcRotEl.addEventListener('change', () => {
+  if (selectedNpc) selectedNpc.rot = parseInt(worldNpcRotEl.value, 10) || 0;
+});
+placeKindLocBtn.addEventListener('click', () => setPlaceKind('loc'));
+placeKindNpcBtn.addEventListener('click', () => setPlaceKind('npc'));
+exportMapBtn.addEventListener('click', exportMap);
+importMapBtn.addEventListener('click', () => importMapFileEl.click());
+importMapFileEl.addEventListener('change', () => {
+  const f = importMapFileEl.files && importMapFileEl.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { importMap(String(reader.result)); importMapFileEl.value = ''; };
+  reader.readAsText(f);
+});
+clearPlacedBtn.addEventListener('click', () => {
+  placedObjects.forEach(o => { scene.remove(o); o.traverse(x => { if (x.geometry) x.geometry.dispose(); }); });
+  placedObjects = [];
+  placedMixers = [];
+  clearHistory();
+  worldStatusEl.textContent = 'Cleared placed scenery and NPCs.';
+});
+pGenderSel.addEventListener('change', () => { buildPlayerControls(); reloadPlayer(); });
+
+chessStartBtn?.addEventListener('click', async () => {
+  if (!worldActive) { worldStatusEl.textContent = 'Enter World mode first.'; return; }
+  const cw = ensureChessWorld();
+  chessStartBtn.disabled = true;
+  chessStatusEl.textContent = 'Loading pieces…';
+  try {
+    await cw.setupBoard();
+    chessStatusEl.textContent = 'Board ready. White to move.';
+    if (chessSection) chessSection.open = true;
+    setPlaceMode(false);
+    setPaintMode(false);
+    setDeleteMode(false);
+    // Frame camera on the board + cinema.
+    controls.target.set(tileToScene(6, 5).x, 40, tileToScene(6, 5).z);
+    camera.position.set(tileToScene(6, 5).x - 400, 650, tileToScene(6, 5).z + 900);
+    controls.update();
+  } catch (e) {
+    chessStatusEl.textContent = 'Chess setup failed: ' + e;
+  }
+  chessStartBtn.disabled = false;
+});
+chessStopBtn?.addEventListener('click', () => {
+  if (chessWorld) {
+    chessWorld.dispose();
+    chessStatusEl.textContent = 'Board removed.';
+    selectedNpcObj = null;
+    highlightSelectedNpc();
+  }
+});
+
+raveStartBtn?.addEventListener('click', async () => {
+  if (!worldActive) {
+    if (raveStatusEl) raveStatusEl.textContent = 'Enter World mode first.';
+    return;
+  }
+  const rw = ensureRaveWorld();
+  rw.setYoutubeId(
+    (raveYoutubeEl?.value || '').trim(),
+    parseInt(raveYoutubeStartEl?.value, 10) || 0,
+  );
+  rw.setup();
+  await loadPlayer();
+  const fc = rw.floorCenter();
+  const tgt = tileToScene(fc.x, fc.z);
+  controls.target.set(tgt.x, 120, tgt.z);
+  camera.position.set(tgt.x - 420, 340, tgt.z + 780);
+  controls.update();
+  if (raveStatusEl) raveStatusEl.textContent = 'Rave ready — east of the chess board. Click once for video sound. Walk onto the floor to emote.';
+  if (raveSection) raveSection.open = true;
+  scene.fog = new THREE.FogExp2(0x0a0014, 0.00022);
+  setRaveLighting(true);
+});
+raveStopBtn?.addEventListener('click', async () => {
+  if (raveWorld) {
+    raveWorld.dispose();
+    raveWorld = null;
+    if (raveStatusEl) raveStatusEl.textContent = 'Rave removed.';
+    scene.fog = null;
+    setRaveLighting(false);
+    await loadPlayer();
+  }
+});
+
+raveYoutubeEl?.addEventListener('change', () => {
+  if (raveWorld?.isActive()) {
+    raveWorld.setYoutubeId(
+      (raveYoutubeEl.value || '').trim(),
+      parseInt(raveYoutubeStartEl?.value, 10) || 0,
+    );
+    if (raveStatusEl) raveStatusEl.textContent = 'Stage video updated.';
+  }
+});
+raveYoutubeStartEl?.addEventListener('change', () => {
+  if (raveWorld?.isActive()) {
+    raveWorld.setYoutubeId(
+      (raveYoutubeEl?.value || '').trim(),
+      parseInt(raveYoutubeStartEl?.value, 10) || 0,
+    );
+    if (raveStatusEl) raveStatusEl.textContent = 'Start time updated.';
+  }
+});
+
+function buildPlayerControls() {
+  if (!idkData) return;
+  const g = parseInt(pGenderSel.value, 10) === 1 ? idkData.female : idkData.male;
+  kitControls.innerHTML = '';
+  for (let part = 0; part < idkData.parts; part++) {
+    const options = g.kits[part] || [];
+    const wrap = document.createElement('div');
+    wrap.className = 'row';
+    const lbl = document.createElement('label');
+    lbl.style.margin = '0'; lbl.style.flex = '0 0 50px';
+    lbl.textContent = (idkData.partNames || [])[part] || ('part' + part);
+    const sel = document.createElement('select');
+    sel.style.flex = '1';
+    if (!options.length) {
+      const o = document.createElement('option'); o.value = '-1'; o.textContent = '(default)';
+      sel.appendChild(o);
+    } else {
+      options.forEach(id => {
+        const o = document.createElement('option'); o.value = String(id); o.textContent = '#' + id;
+        sel.appendChild(o);
+      });
+      sel.value = String(g.defaults[part]);
+    }
+    sel.addEventListener('change', () => { playerUsesCustom = false; reloadPlayer(); });
+    wrap.appendChild(lbl); wrap.appendChild(sel);
+    kitControls.appendChild(wrap);
+  }
+  colorControls.innerHTML = '';
+  (idkData.colorCounts || []).forEach((count, part) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'row';
+    const lbl = document.createElement('label');
+    lbl.style.margin = '0'; lbl.style.flex = '0 0 50px';
+    lbl.textContent = (idkData.colorNames || [])[part] || ('color' + part);
+    const sel = document.createElement('select');
+    sel.style.flex = '1';
+    for (let i = 0; i < count; i++) {
+      const o = document.createElement('option'); o.value = String(i); o.textContent = String(i);
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => { playerUsesCustom = false; reloadPlayer(); });
+    wrap.appendChild(lbl); wrap.appendChild(sel);
+    colorControls.appendChild(wrap);
+  });
+}
+
+function setCreatorModeUi(mode) {
+  npcCreator.creatorMode = mode;
+  const human = mode === 'human';
+  crModeHuman?.classList.toggle('tgl-on', human);
+  crModeNpc?.classList.toggle('tgl-on', !human);
+  if (crHumanPanel) crHumanPanel.style.display = human ? '' : 'none';
+  if (crNpcPanel) crNpcPanel.style.display = human ? 'none' : '';
+}
+
+function renderCreatorNpcList() {
+  if (!crNpcList) return;
+  const q = (crNpcSearch?.value || '').trim().toLowerCase();
+  const matches = !q ? allNpcs.slice(0, 120) : allNpcs.filter(n => {
+    const name = (n.name || '').toLowerCase();
+    return name.includes(q) || String(n.id).includes(q);
+  }).slice(0, 120);
+  crNpcList.innerHTML = '';
+  matches.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = String(n.id);
+    const rec = (n.recolors || []).length;
+    opt.textContent = `${n.name || 'npc'} (#${n.id}) · ${(n.modelIds || []).length} models${rec ? ` · ${rec} recolours` : ''}`;
+    if (npcCreator.baseNpcId === n.id) opt.selected = true;
+    crNpcList.appendChild(opt);
+  });
+}
+
+function swatchEl(rgb, title) {
+  const s = document.createElement('span');
+  s.title = title || rgb || '';
+  s.style.cssText = `display:inline-block;width:18px;height:18px;border:1px solid #666;background:${rgb || '#333'};flex:0 0 18px;`;
+  return s;
+}
+
+async function fetchHslRgb(indices) {
+  const uniq = [...new Set(indices.filter(n => n >= 0))];
+  if (!uniq.length) return {};
+  try {
+    const r = await fetch(`/api/hsl-rgb.json?i=${uniq.join(',')}`, { cache: 'force-cache' });
+    if (!r.ok) return {};
+    const j = await r.json();
+    return j.colors || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function syncNpcCloneFromUi() {
+  if (!crNpcRecolors) return;
+  crNpcRecolors.querySelectorAll('input[data-recolor-src]').forEach(inp => {
+    const src = parseInt(inp.dataset.recolorSrc, 10);
+    const dst = parseInt(inp.value, 10);
+    if (!isNaN(src) && !isNaN(dst)) {
+      const sw = inp.parentElement?.querySelector('[data-dst-swatch]');
+      npcCreator.setRecolorSrc(src, dst, sw?.style?.backgroundColor);
+    }
+  });
+}
+
+function buildNpcModelPartsUi() {
+  if (!crNpcModelParts) return;
+  const parts = npcCreator.modelParts;
+  if (!parts.length) {
+    crNpcModelParts.innerHTML = '<div class="hint">No model parts — select an NPC above.</div>';
+    return;
+  }
+  crNpcModelParts.innerHTML = '';
+  parts.forEach(part => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.marginTop = '4px';
+    row.style.alignItems = 'center';
+    const lbl = document.createElement('span');
+    lbl.style.flex = '1';
+    const slotN = (part.slots || []).length;
+    lbl.textContent = part.missing
+      ? `model #${part.id} (missing)`
+      : `model #${part.id} · ${slotN} colour slot${slotN === 1 ? '' : 's'}`;
+    const prev = document.createElement('button');
+    prev.type = 'button';
+    prev.textContent = 'Preview';
+    prev.style.flex = '0 0 auto';
+    prev.addEventListener('click', () => {
+      syncNpcCloneFromUi();
+      const url = npcCreator.modelGlbUrl(part.id);
+      crStatus.textContent = `Loading model #${part.id}…`;
+      loadURL(url, `model #${part.id}`);
+    });
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.title = 'Remove part';
+    rm.style.flex = '0 0 28px';
+    rm.addEventListener('click', () => {
+      npcCreator.removeModelPart(part.id);
+      buildNpcModelPartsUi();
+      buildNpcRecolorControls();
+      reloadCreatorPreview(false);
+    });
+    row.appendChild(lbl);
+    row.appendChild(prev);
+    row.appendChild(rm);
+    crNpcModelParts.appendChild(row);
+  });
+}
+
+function buildNpcRecolorControls() {
+  if (!crNpcRecolors) return;
+  crNpcRecolors.innerHTML = '';
+  const parts = npcCreator.modelParts;
+  let any = false;
+  parts.forEach(part => {
+    const slots = part.slots || [];
+    if (!slots.length) return;
+    any = true;
+    const head = document.createElement('div');
+    head.className = 'hint';
+    head.style.marginTop = '8px';
+    head.style.fontWeight = 'bold';
+    head.textContent = `Model #${part.id}`;
+    crNpcRecolors.appendChild(head);
+    slots.forEach(slot => {
+      const dst = npcCreator.effectiveDst(slot.src);
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '4px';
+      row.style.alignItems = 'center';
+      row.style.gap = '4px';
+      row.appendChild(swatchEl(slot.srcRgb, `original ${slot.src}`));
+      const arrow = document.createElement('span');
+      arrow.textContent = '→';
+      arrow.style.flex = '0 0 12px';
+      row.appendChild(arrow);
+      const dstSw = swatchEl(slot.dstRgb || slot.srcRgb, `current ${dst}`);
+      dstSw.dataset.dstSwatch = '1';
+      row.appendChild(dstSw);
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.max = '65535';
+      inp.style.flex = '1';
+      inp.value = String(dst);
+      inp.dataset.recolorSrc = String(slot.src);
+      inp.title = `Palette index for model #${part.id}`;
+      const applyDst = async () => {
+        const v = parseInt(inp.value, 10);
+        if (isNaN(v)) return;
+        npcCreator.setRecolorSrc(slot.src, v);
+        const colors = await fetchHslRgb([v]);
+        const hex = colors[String(v)];
+        if (hex) dstSw.style.background = hex;
+        reloadCreatorPreview(false);
+      };
+      inp.addEventListener('change', applyDst);
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') applyDst(); });
+      row.appendChild(inp);
+      const quick = document.createElement('button');
+      quick.type = 'button';
+      quick.textContent = 'W';
+      quick.title = 'Quick white (palette 127:127)';
+      quick.style.flex = '0 0 24px';
+      quick.addEventListener('click', async () => {
+        inp.value = '127';
+        await applyDst();
+      });
+      row.appendChild(quick);
+      crNpcRecolors.appendChild(row);
+    });
+  });
+  if (!any) {
+    crNpcRecolors.innerHTML = '<div class="hint">No recolourable colour slots on these models (textured-only?).</div>';
+  }
+}
+
+async function loadNpcCloneFromSelection() {
+  const id = parseInt(crNpcList?.value, 10);
+  const npc = npcById[id];
+  if (!npc) return;
+  crStatus.textContent = `Loading ${npc.name} parts…`;
+  let detail = null;
+  try {
+    const r = await fetch(`/api/npc/${id}/clone.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (r.ok) detail = await r.json();
+  } catch (_) { /* manifest fallback */ }
+  npcCreator.loadNpcClone(npc, detail);
+  if (crNpcSel) {
+    const n = npcCreator.modelParts.length;
+    crNpcSel.textContent = `Cloning ${npc.name} (#${npc.id}) — ${n} model part${n === 1 ? '' : 's'}. Tweak colours per slot below.`;
+  }
+  buildNpcModelPartsUi();
+  buildNpcRecolorControls();
+  reloadCreatorPreview(false);
+}
+
+async function initCreatorMode() {
+  spinning = true;
+  if (!creatorReady) {
+    crStatus.textContent = 'Loading kit catalog…';
+    try {
+      await npcCreator.loadCatalog();
+      const idkR = await fetchManifestJson(IDK_MANIFEST_URL, 'idk');
+      if (idkR.ok) {
+        npcCreator.applyDefaults(idkR.data);
+        idkData = idkR.data;
+      }
+      npcCreator.buildNpcHints(allNpcs);
+      buildCreatorPartTabs();
+      buildCreatorColorControls();
+      creatorReady = true;
+    } catch (e) {
+      crStatus.textContent = 'Creator failed: ' + e;
+      return;
+    }
+  }
+  setCreatorModeUi(npcCreator.creatorMode);
+  npcCreator.gender = parseInt(crGender.value, 10) || 0;
+  renderCreatorKitList();
+  renderCreatorExtraNpcList();
+  renderCreatorNpcList();
+  if (npcCreator.creatorMode === 'npc' && npcCreator.baseNpcId) {
+    buildNpcModelPartsUi();
+    buildNpcRecolorControls();
+  }
+  reloadCreatorPreview(false);
+}
+
+function buildCreatorPartTabs() {
+  if (!crPartTabs) return;
+  crPartTabs.innerHTML = '';
+  npcCreator.PART_NAMES.forEach((name, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = name;
+    b.style.flex = '1 1 30%';
+    b.style.fontWeight = npcCreator.activePart === i ? 'bold' : 'normal';
+    b.addEventListener('click', () => {
+      npcCreator.activePart = i;
+      buildCreatorPartTabs();
+      renderCreatorKitList();
+    });
+    crPartTabs.appendChild(b);
+  });
+}
+
+function buildCreatorColorControls() {
+  if (!crColorControls || !idkData) return;
+  crColorControls.innerHTML = '';
+  (idkData.colorCounts || []).forEach((count, part) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'row';
+    const lbl = document.createElement('label');
+    lbl.style.margin = '0'; lbl.style.flex = '0 0 50px';
+    lbl.textContent = (idkData.colorNames || [])[part] || ('c' + part);
+    const sel = document.createElement('select');
+    sel.style.flex = '1';
+    sel.dataset.colorPart = String(part);
+    for (let i = 0; i < count; i++) {
+      const o = document.createElement('option');
+      o.value = String(i); o.textContent = String(i);
+      sel.appendChild(o);
+    }
+    sel.value = String(npcCreator.colors[part] || 0);
+    sel.addEventListener('change', () => {
+      const cols = npcCreator.colors.slice();
+      cols[part] = parseInt(sel.value, 10) || 0;
+      npcCreator.colors = cols;
+      npcCreator.previewKitOnly = false;
+      reloadCreatorPreview(false);
+    });
+    wrap.appendChild(lbl); wrap.appendChild(sel);
+    crColorControls.appendChild(wrap);
+  });
+}
+
+function renderCreatorKitList() {
+  if (!crKitList) return;
+  const list = npcCreator.filterKits(crSearch?.value || '', npcCreator.activePart);
+  crKitList.innerHTML = '';
+  list.slice(0, 400).forEach(k => {
+    const opt = document.createElement('option');
+    opt.value = String(k.id);
+    opt.textContent = npcCreator.kitLabel(k);
+    if (npcCreator.kits[npcCreator.activePart] === k.id) opt.selected = true;
+    crKitList.appendChild(opt);
+  });
+  const selId = npcCreator.kits[npcCreator.activePart];
+  crKitSel.textContent = selId >= 0
+    ? `${npcCreator.PART_NAMES[npcCreator.activePart]}: kit #${selId}`
+    : `No ${npcCreator.PART_NAMES[npcCreator.activePart]} selected (using default).`;
+}
+
+function renderCreatorExtraNpcList() {
+  if (!crExtraNpcList) return;
+  const q = (crExtraSearch?.value || '').trim().toLowerCase();
+  const matches = !q ? allNpcs.slice(0, 80) : allNpcs.filter(n => {
+    const name = (n.name || '').toLowerCase();
+    return name.includes(q) || String(n.id).includes(q);
+  }).slice(0, 80);
+  crExtraNpcList.innerHTML = '';
+  matches.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = String(n.id);
+    opt.textContent = `${n.name || 'npc'} (#${n.id}) models ${(n.modelIds || []).join(',')}`;
+    crExtraNpcList.appendChild(opt);
+  });
+}
+
+function parseExtraModelsInput() {
+  const raw = (crExtra?.value || '').trim();
+  if (!raw) { npcCreator.extraModels = []; return; }
+  npcCreator.extraModels = raw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n >= 0);
+}
+
+function reloadCreatorPreview(kitOnly) {
+  parseExtraModelsInput();
+  if (npcCreator.creatorMode === 'npc') {
+    syncNpcCloneFromUi();
+    const url = npcCreator.npcCustomGlbUrl();
+    if (!url) {
+      crStatus.textContent = 'Select an NPC to clone first.';
+      return;
+    }
+    const label = `NPC clone #${npcCreator.baseNpcId}`;
+    crStatus.textContent = 'Loading ' + label + '…';
+    loadURL(url, label);
+    return;
+  }
+  npcCreator.previewKitOnly = !!kitOnly;
+  const kitId = parseInt(crKitList?.value, 10);
+  const url = kitOnly && kitId >= 0
+    ? npcCreator.kitPreviewUrl(kitId)
+    : npcCreator.customGlbUrl();
+  const label = kitOnly ? `kit #${kitId}` : 'custom NPC';
+  crStatus.textContent = 'Loading ' + label + '…';
+  loadURL(url, label);
+}
+
+crModeHuman?.addEventListener('click', () => {
+  setCreatorModeUi('human');
+  reloadCreatorPreview(false);
+});
+crModeNpc?.addEventListener('click', () => {
+  setCreatorModeUi('npc');
+  renderCreatorNpcList();
+  reloadCreatorPreview(false);
+});
+crNpcSearch?.addEventListener('input', renderCreatorNpcList);
+crNpcList?.addEventListener('change', loadNpcCloneFromSelection);
+crNpcList?.addEventListener('dblclick', loadNpcCloneFromSelection);
+crNpcAddModelBtn?.addEventListener('click', () => {
+  const mid = parseInt(crNpcAddModel?.value, 10);
+  if (isNaN(mid) || mid < 0) return;
+  npcCreator.addModelPart(mid);
+  if (crNpcAddModel) crNpcAddModel.value = '';
+  buildNpcModelPartsUi();
+  reloadCreatorPreview(false);
+});
+crNpcPreview?.addEventListener('click', () => reloadCreatorPreview(false));
+crGender?.addEventListener('change', () => {
+  npcCreator.gender = parseInt(crGender.value, 10) || 0;
+  if (idkData) npcCreator.applyDefaults(idkData);
+  buildCreatorColorControls();
+  renderCreatorKitList();
+  reloadCreatorPreview(false);
+});
+crSearch?.addEventListener('input', renderCreatorKitList);
+crKitList?.addEventListener('change', () => {
+  const kitId = parseInt(crKitList.value, 10);
+  if (kitId >= 0) npcCreator.setKit(npcCreator.activePart, kitId);
+  renderCreatorKitList();
+  reloadCreatorPreview(false);
+});
+crExtra?.addEventListener('change', () => reloadCreatorPreview(false));
+crExtraSearch?.addEventListener('input', renderCreatorExtraNpcList);
+crExtraNpcList?.addEventListener('dblclick', () => {
+  const id = parseInt(crExtraNpcList.value, 10);
+  const npc = npcById[id];
+  if (npc) {
+    npcCreator.addExtraFromNpc(npc);
+    crExtra.value = npcCreator.extraModels.join(',');
+    renderCreatorExtraNpcList();
+    reloadCreatorPreview(false);
+    crStatus.textContent = `Added models from ${npc.name}.`;
+  }
+});
+crQueenPreset?.addEventListener('click', () => {
+  crGender.value = '1';
+  npcCreator.applyQueenPreset();
+  buildCreatorColorControls();
+  renderCreatorKitList();
+  reloadCreatorPreview(false);
+  crStatus.textContent = 'Queen preset applied — tweak head, colours, and add a crown model.';
+});
+crPreviewKit?.addEventListener('click', () => reloadCreatorPreview(true));
+crPreviewFull?.addEventListener('click', () => reloadCreatorPreview(false));
+crApplyPlayer?.addEventListener('click', async () => {
+  parseExtraModelsInput();
+  playerUsesCustom = true;
+  if (!worldActive) {
+    setViewMode('world');
+    await new Promise(r => setTimeout(r, 100));
+  }
+  await loadPlayer();
+  worldStatusEl.textContent = 'World player updated from NPC Creator.';
+  crStatus.textContent = 'Applied to world player.';
+});
+crPlaceWorld?.addEventListener('click', async () => {
+  parseExtraModelsInput();
+  if (!worldActive) {
+    crStatus.textContent = 'Enter World mode first, then place.';
+    return;
+  }
+  playerUsesCustom = true;
+  await loadPlayer();
+  worldStatusEl.textContent = 'Custom character loaded — walk onto a tile. (Placed-NPC export coming soon.)';
+  crStatus.textContent = 'Character loaded as player. Use Place NPC mode with a preset NPC for static props.';
+});
+
+async function loadIdkManifest() {
+  const r = await fetchManifestJson(IDK_MANIFEST_URL, 'idk');
+  if (!r.ok) { kitControls.innerHTML = '<div style="font-size:11px;color:#f0a080;">Player API unavailable</div>'; return; }
+  idkData = r.data;
+  buildPlayerControls();
+}
+
+// --- Fixed-mode inventory / equipment tab panel -----------------------------
+// Tab icons (sideicons 0-12). Only inventory (3) and equipment (4) are wired up;
+// the rest are shown for the authentic 317 look but are inert for now.
+const RS_TAB_NAMES = {
+  0: 'Combat', 1: 'Skills', 2: 'Quests', 3: 'Inventory', 4: 'Equipment',
+  5: 'Prayer', 6: 'Magic', 7: 'Friends', 8: 'Ignore', 9: 'Logout',
+  10: 'Settings', 11: 'Emotes', 12: 'Music',
+};
+// Tab icon -> real 317 interface id (rendered server-side to a PNG).
+const RS_TAB_INTERFACES = { 1: 3917, 4: 1644, 5: 5608, 6: 1151, 9: 2449, 12: 962 };
+// Per-load version so re-rendered interfaces aren't masked by the browser cache.
+const RS_IFACE_VER = Date.now();
+// Inventory (3) is drawn locally as a slot grid; the rest load real interfaces.
+const RS_ACTIVE_TABS = new Set([3, ...Object.keys(RS_TAB_INTERFACES).map(Number)]);
+
+function selectRsTab(icon) {
+  if (!RS_ACTIVE_TABS.has(icon)) return;
+  document.querySelectorAll('#rsPanel .rsTab').forEach(t => {
+    t.classList.toggle('sel', parseInt(t.dataset.icon, 10) === icon);
+  });
+  const inv = document.getElementById('rsInv');
+  const iface = document.getElementById('rsIface');
+  if (icon === 3) {
+    inv.style.display = 'grid';
+    iface.style.display = 'none';
+  } else {
+    iface.src = `/api/interface/${RS_TAB_INTERFACES[icon]}.png?v=${RS_IFACE_VER}`;
+    iface.style.display = 'block';
+    inv.style.display = 'none';
+  }
+}
+
+function buildRsPanel() {
+  const top = document.getElementById('rsTabsTop');
+  const bot = document.getElementById('rsTabsBot');
+  const mkTab = (icon) => {
+    const t = document.createElement('div');
+    t.className = 'rsTab' + (RS_ACTIVE_TABS.has(icon) ? '' : ' disabled');
+    t.dataset.icon = String(icon);
+    t.title = RS_TAB_NAMES[icon] || ('Tab ' + icon);
+    const img = document.createElement('img');
+    img.src = SPRITE_URL('sideicons', icon);
+    img.alt = t.title;
+    t.appendChild(img);
+    if (RS_ACTIVE_TABS.has(icon)) t.addEventListener('click', () => selectRsTab(icon));
+    return t;
+  };
+  for (let i = 0; i <= 6; i++) top.appendChild(mkTab(i));
+  for (let i = 7; i <= 12; i++) bot.appendChild(mkTab(i));
+
+  // Inventory: 28 empty slots (no items in the sandbox yet).
+  const inv = document.getElementById('rsInv');
+  for (let i = 0; i < 28; i++) {
+    const s = document.createElement('div');
+    s.className = 'slot';
+    s.dataset.slot = String(i);
+    inv.appendChild(s);
+  }
+
+  selectRsTab(3); // inventory selected by default, matching the 317 client
+}
+
+animate();
+loadManifest();
+loadSounds();
+buildRsPanel();
+</script>
+</body>
+</html>

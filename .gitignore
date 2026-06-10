@@ -1,0 +1,47 @@
+# Local environment
+.env
+.env.local
+.env.*
+!.env.example
+
+# Reference repos & large local data (keep locally, not in RuneBox)
+RuneScape-317-client/
+elvarg-rsps-master/
+concepts/
+cache-runescape*/
+apollo-kotlin-experiments/
+
+# Legacy path (renamed to tools/rs-sandbox-world)
+tools/rs-model-pipeline/
+
+# Documentation — root README only
+*.md
+!/README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# AI backend vendored deps & envs
+**/_vendor/
+**/.venv/
+
+# Generated / cache outputs
+tools/rs-sandbox-world/outputs/
+tools/rs-sandbox-world/exports/
+tools/rs-sandbox-world/.pytest_cache/
+
+# IDE / OS
+.cursor/
+.cursorignore
+.DS_Store
+Thumbs.db
+*.log
+serve_log*.txt
