@@ -26,7 +26,7 @@ You should get a folder containing `main_file_cache.dat` and `main_file_cache.id
 
 ### 3. Place the cache in the project
 
-Copy the cache files into the universal **`cache/`** folder at the repo root:
+Copy the cache files into **`cache/`** at the repo root:
 
 ```text
 RuneBox/
@@ -39,14 +39,14 @@ RuneBox/
     main_file_cache.idx4
 ```
 
-Alternatively, you can use `tools/rs-sandbox-world/cache/` — RuneBox checks the repo root first, then the sandbox folder.
+RuneBox also checks `rs-sandbox-world/cache/` if the root folder is empty.
 
-If your OpenRS2 download has an extra wrapper directory, copy only the inner files that contain `main_file_cache.dat`. You can also point to any path with the `RS_CACHE` environment variable (see `.env.example`).
+If your OpenRS2 download has an extra wrapper directory, copy only the inner files that contain `main_file_cache.dat`. You can also set `RS_CACHE` in `.env` to point at any cache directory.
 
 ### 4. Install and run
 
 ```bash
-cd tools/rs-sandbox-world
+cd rs-sandbox-world
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # macOS / Linux
@@ -75,29 +75,18 @@ python -m src.cli.cache_status
 ## Project layout
 
 ```text
-cache/                    # Your OpenRS2 flatfile extract (gitignored contents)
-tools/rs-sandbox-world/   # Main app: Python cache pipeline + web viewer
-  src/                    # Cache I/O, model decode, GLB export, CLI
-  web/                    # Three.js viewer (rs_viewer.html)
-tools/ai-backends/        # Optional text-to-mesh backends (Hunyuan3D, TripoSR)
-showcase.png              # Screenshot for GitHub
+cache/              # Your OpenRS2 flatfile extract (contents gitignored)
+rs-sandbox-world/   # Python cache pipeline + web viewer
+  src/              # Cache I/O, model decode, GLB export, CLI
+  web/              # Three.js viewer (rs_viewer.html)
+showcase.png
 ```
-
-## Local reference material (gitignored)
-
-These folders are useful locally but not shipped in the repo:
-
-- `RuneScape-317-client/` — 317 client for Java cache bridge
-- `elvarg-rsps-master/` — RSPS reference
-- `apollo-kotlin-experiments/` — Apollo/Kotlin experiments
-- `concepts/` — design notes
-- `cache-runescape*/` — legacy OpenRS2 folder names still work via `RS_CACHE`
 
 ## Requirements
 
 - Python 3.11+
-- An OpenRS2 flatfile cache (317, 377, or 474) in `cache/`
-- Optional: Java 17+ and Maven (for Java cache bridge via `RuneScape-317-client`)
+- An OpenRS2 flatfile cache in `cache/`
+- Optional: Java 17+ and Maven with `RS_JAVA_CLIENT_DIR` set for the Java cache bridge
 
 ## License
 

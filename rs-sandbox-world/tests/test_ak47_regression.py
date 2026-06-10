@@ -17,9 +17,9 @@ from src.pipeline.concept_candidate import generate_model_candidate
 from src.pipeline.primitive_candidate import generate_primitive_candidate
 from src.quality.report import score_candidate_dir
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PIPELINE_ROOT = Path(__file__).resolve().parents[1]
-AK47_CONCEPT = PROJECT_ROOT / "concepts" / "ak47.png"
+AK47_CONCEPT = PIPELINE_ROOT / "inputs" / "test_concept.png"
 
 REGRESSION_PROMPT = (
     "an rs-themed ak47, chunky low-poly assault rifle, brown wooden stock and handguard, "

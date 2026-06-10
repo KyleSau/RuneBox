@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from src.config import DEFAULT_CLIENT_DIR, DEFAULT_DEV_MODEL_ID, GENERATED_DIR
+from src.config import DEFAULT_DEV_MODEL_ID, GENERATED_DIR, resolve_java_client_dir
 from src.pipeline.candidate import slugify, run_dev_model_smoke
 from src.pipeline.primitive_candidate import generate_primitive_candidate
 from src.quality.icon_score import IconScore
@@ -32,7 +32,7 @@ def run_primitive(
 
     if client_dev:
         model_id = model_id if model_id is not None else DEFAULT_DEV_MODEL_ID
-        client_dir = client_dir if client_dir is not None else DEFAULT_CLIENT_DIR
+        client_dir = client_dir if client_dir is not None else resolve_java_client_dir()
 
     try:
         result = generate_primitive_candidate(

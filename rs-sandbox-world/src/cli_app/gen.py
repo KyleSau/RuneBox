@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src.ai.concept_backend import ConceptBackendNotConfiguredError
 from src.ai.generator_backend import BackendNotConfiguredError, ImageInputNotSupportedError
-from src.config import DEFAULT_BACKEND, DEFAULT_CLIENT_DIR, DEFAULT_CONCEPT_BACKEND, DEFAULT_DEV_MODEL_ID, GENERATED_DIR
+from src.config import DEFAULT_BACKEND, DEFAULT_CONCEPT_BACKEND, DEFAULT_DEV_MODEL_ID, GENERATED_DIR, resolve_java_client_dir
 from src.mesh.reconstruct import StylerOptions
 from src.pipeline.candidate import slugify
 from src.pipeline.concept_candidate import generate_model_candidate
@@ -44,7 +44,7 @@ def run_model(
 
     if client_dev:
         model_id = model_id if model_id is not None else DEFAULT_DEV_MODEL_ID
-        client_dir = client_dir if client_dir is not None else DEFAULT_CLIENT_DIR
+        client_dir = client_dir if client_dir is not None else resolve_java_client_dir()
 
     cb = concept_backend
     if concept_first and cb is None:

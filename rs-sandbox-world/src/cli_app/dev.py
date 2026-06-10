@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from src.config import DEFAULT_CLIENT_DIR, DEFAULT_DEV_MODEL_ID
+from src.config import DEFAULT_DEV_MODEL_ID, resolve_java_client_dir
 from src.pipeline.candidate import run_dev_model_smoke
 
 
@@ -34,7 +34,11 @@ def use_candidate(
             return 1
         gzip_src = str(matches[0])
 
-    client = (client_dir or DEFAULT_CLIENT_DIR).resolve()
+    client = (client_dir or resolve_java_client_dir())
+    if client is None:
+        print("Set RS_JAVA_CLIENT_DIR to a local 317 client checkout.", file=sys.stderr)
+        return 1
+    client = client.resolve()
     dest = client / "dev-models" / f"model_{model_id}.dat.gz"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(gzip_src, dest)

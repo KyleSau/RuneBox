@@ -1,6 +1,0 @@
-# Installed by install.ps1 together with PyTorch and hy3dgen from _vendor/Hunyuan3D-2.
-trimesh>=4.0
-huggingface_hub>=0.20
-sentencepiece>=0.2.0
-tiktoken>=0.7.0
-protobuf>=4.25

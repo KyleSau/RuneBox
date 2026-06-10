@@ -4,21 +4,11 @@
 .env.*
 !.env.example
 
-# Reference repos & large local data (keep locally, not in RuneBox)
-RuneScape-317-client/
-elvarg-rsps-master/
-concepts/
-cache-runescape*/
-apollo-kotlin-experiments/
-
-# Game cache (user-provided; see README Getting Started)
+# Game cache (user-provided; see README)
 /cache/*
 !cache/.gitkeep
-/tools/rs-sandbox-world/cache/*
-!tools/rs-sandbox-world/cache/.gitkeep
-
-# Legacy path (renamed to tools/rs-sandbox-world)
-tools/rs-model-pipeline/
+/rs-sandbox-world/cache/*
+!rs-sandbox-world/cache/.gitkeep
 
 # Documentation — root README only
 *.md
@@ -34,15 +24,12 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-
-# AI backend vendored deps & envs
 **/_vendor/
-**/.venv/
 
-# Generated / cache outputs
-tools/rs-sandbox-world/outputs/
-tools/rs-sandbox-world/exports/
-tools/rs-sandbox-world/.pytest_cache/
+# Generated outputs
+rs-sandbox-world/outputs/
+rs-sandbox-world/exports/
+rs-sandbox-world/.pytest_cache/
 
 # IDE / OS
 .cursor/
@@ -51,3 +38,11 @@ tools/rs-sandbox-world/.pytest_cache/
 Thumbs.db
 *.log
 serve_log*.txt
+
+# Optional local checkouts kept alongside the repo (not part of RuneBox)
+RuneScape-317-client/
+elvarg-rsps-master/
+concepts/
+cache-runescape*/
+apollo-kotlin-experiments/
+tools/

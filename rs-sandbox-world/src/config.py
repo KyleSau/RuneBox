@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 PIPELINE_ROOT = Path(__file__).resolve().parents[1]
-PROJECT_ROOT = PIPELINE_ROOT.parent.parent
+PROJECT_ROOT = PIPELINE_ROOT.parent
 OUTPUT_ROOT = PIPELINE_ROOT / "outputs"
 GENERATED_DIR = OUTPUT_ROOT / "generated"
 GENERATED_CONCEPTS_DIR = OUTPUT_ROOT / "generated_concepts"
@@ -26,9 +26,15 @@ CACHE_DIR_CANDIDATES = (
 )
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 
-# Java client dev-model defaults (relative to pipeline root).
-DEFAULT_CLIENT_DIR = PROJECT_ROOT / "RuneScape-317-client"
 DEFAULT_DEV_MODEL_ID = 90000
+
+
+def resolve_java_client_dir() -> Path | None:
+    """Optional local 317 client for Java cache bridge (set RS_JAVA_CLIENT_DIR)."""
+    env = os.environ.get("RS_JAVA_CLIENT_DIR")
+    if env:
+        return Path(env)
+    return None
 
 # AI backends — pluggable command wrappers; no training/fine-tuning.
 DEFAULT_BACKEND = "mock"

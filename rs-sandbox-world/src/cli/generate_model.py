@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from src.cli_app.gen import run_model
-from src.config import DEFAULT_BACKEND, DEFAULT_CLIENT_DIR, DEFAULT_DEV_MODEL_ID, GENERATED_DIR
+from src.config import DEFAULT_BACKEND, DEFAULT_DEV_MODEL_ID, GENERATED_DIR
 from src.pipeline.candidate import slugify
 
 
@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--client-dev",
         action="store_true",
-        help=f"Copy to client dev-models (default id {DEFAULT_DEV_MODEL_ID}, client {DEFAULT_CLIENT_DIR.name})",
+        help=f"Copy to client dev-models (default id {DEFAULT_DEV_MODEL_ID}; requires RS_JAVA_CLIENT_DIR)",
     )
     parser.add_argument("--out", type=Path, help="Output run directory (default: outputs/generated/<slug>)")
     parser.add_argument("--skip-dev-smoke", action="store_true", help="Skip DevModelSmoke subprocess check")

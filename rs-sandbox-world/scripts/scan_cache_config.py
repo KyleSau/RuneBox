@@ -91,7 +91,7 @@ def scan_member(data: bytes, label: str) -> None:
 
 
 def main() -> None:
-    cache_path = Path(r"C:\Users\integ\Desktop\RS317\cache-runescape-live-en-b377-2006-05-02-00-00-00-openrs2#657")
+    from src.config import discover_cache_dir; cache_path = discover_cache_dir()
     cache = CacheReader(cache_path)
     target_crc = (-1998798937) & 0xFFFFFFFF
     npc_dat_h = hash_name("npc.dat")

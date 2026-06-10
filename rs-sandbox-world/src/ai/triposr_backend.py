@@ -30,7 +30,7 @@ class TripoSRBackend(GeneratorBackend):
                 "Set RS_TRIPOSR_COMMAND or config.TRIPOSR_COMMAND.\n"
                 "Example:\n"
                 '  python path/to/triposr_generate.py --prompt "<prompt>" --output "<output_dir>"\n'
-                "See tools/ai-backends/triposr/README.md"
+                "Set RS_TRIPOSR_COMMAND to a local TripoSR wrapper script."
             )
 
         output_dir.mkdir(parents=True, exist_ok=True)

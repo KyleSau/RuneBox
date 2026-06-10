@@ -7,47 +7,56 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from src.config import PIPELINE_ROOT, resolve_java_exe
-
-CLIENT_ROOT = PIPELINE_ROOT.parent.parent / "RuneScape-317-client"
-CP_FILE = CLIENT_ROOT / "cp.txt"
-CLASS_DIR = CLIENT_ROOT / "target" / "classes"
+from src.config import resolve_java_client_dir, resolve_java_exe
 
 
 class JavaBridgeError(RuntimeError):
     pass
 
 
+def _client_root() -> Path | None:
+    root = resolve_java_client_dir()
+    return root.resolve() if root else None
+
+
 def client_root() -> Path:
-    return CLIENT_ROOT
+    root = _client_root()
+    if root is None:
+        raise JavaBridgeError("Java client not configured (set RS_JAVA_CLIENT_DIR)")
+    return root
 
 
 def is_available() -> bool:
-    return CLIENT_ROOT.is_dir() and (CLIENT_ROOT / "pom.xml").exists()
+    root = _client_root()
+    return root is not None and root.is_dir() and (root / "pom.xml").exists()
 
 
 def ensure_built() -> None:
     if not is_available():
-        raise JavaBridgeError(f"Client not found at {CLIENT_ROOT}")
-
-    if CLASS_DIR.is_dir() and CP_FILE.is_file():
+        raise JavaBridgeError("Java client not configured (set RS_JAVA_CLIENT_DIR)")
+    root = client_root()
+    class_dir = root / "target" / "classes"
+    cp_file = root / "cp.txt"
+    if class_dir.is_dir() and cp_file.is_file():
         return
+    _build(root)
 
-    _build()
 
-
-def _build() -> None:
+def _build(client_root_path: Path) -> None:
     subprocess.run(
         ["mvn", "-q", "compile", "dependency:build-classpath", "-Dmdep.pathSeparator=;", "-Dmdep.outputFile=cp.txt"],
-        cwd=CLIENT_ROOT,
+        cwd=client_root()_path,
         check=True,
     )
 
 
 def classpath() -> str:
     ensure_built()
-    deps = CP_FILE.read_text(encoding="utf-8").strip()
-    return f"{CLASS_DIR};{deps}" if deps else str(CLASS_DIR)
+    root = client_root()
+    class_dir = root / "target" / "classes"
+    cp_file = root / "cp.txt"
+    deps = cp_file.read_text(encoding="utf-8").strip()
+    return f"{class_dir};{deps}" if deps else str(class_dir)
 
 
 def run(cache_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -60,7 +69,7 @@ def run(cache_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
         str(cache_dir),
         *args,
     ]
-    return subprocess.run(cmd, capture_output=True, text=True, cwd=CLIENT_ROOT)
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=client_root())
 
 
 def _temp_output() -> Path:
