@@ -45,7 +45,7 @@ def ensure_built() -> None:
 def _build(client_root_path: Path) -> None:
     subprocess.run(
         ["mvn", "-q", "compile", "dependency:build-classpath", "-Dmdep.pathSeparator=;", "-Dmdep.outputFile=cp.txt"],
-        cwd=client_root()_path,
+        cwd=client_root_path,
         check=True,
     )
 

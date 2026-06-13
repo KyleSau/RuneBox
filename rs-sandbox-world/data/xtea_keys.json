@@ -1,0 +1,11 @@
+{
+  "_comment": "XTEA keys for encrypted landscape (l{rx}_{ry}) in idx4. OpenRS2 cache #657 stores landscape at terrain idx+1 without XTEA; OSRS caches use terrain idx + 0x8000 with encryption. Keys from OpenRS2 /keys/valid.json or scripts/find_xtea_key.py.",
+  "_format": "Region key as decimal regionId (rx<<8|ry) or \"rx,ry\" -> [k0, k1, k2, k3] unsigned 32-bit ints.",
+  "_lumbridge": "Region 50,50 (id 12850) covers Lumbridge. Add keys from OpenRS2 or a key dump tool.",
+  "12850": [
+    0,
+    0,
+    0,
+    0
+  ]
+}

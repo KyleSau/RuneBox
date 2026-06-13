@@ -317,8 +317,7 @@ def _scale_int(vertices: list[list[int]], scale_xy: int, scale_z: int) -> list[l
 
 
 def _y_up(vertices: list[list[int]]) -> np.ndarray:
-    """RS (Y-down) -> Y-up via 180 deg rotation about X (negate Y and Z),
-    matching mesh_assembly._scaled_y_up (sans scale, already applied)."""
+    """RS (Y-down) -> Y-up; must match mesh_assembly._scaled_y_up."""
     arr = np.asarray(vertices, dtype="f4")
     arr[:, 1] = -arr[:, 1]
     arr[:, 2] = -arr[:, 2]
@@ -365,7 +364,7 @@ def compute_seq_morphs(
     """
     if seq is None or seq.frame_count <= 1:
         return None
-    if not model.vertex_skins:
+    if not model.vertex_skins and pose_fn is None:
         return None
 
     if pose_fn is None:

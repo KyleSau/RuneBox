@@ -18,8 +18,8 @@ from src.export.animation import (
 )
 from src.export.gltf_export import build_glb_bytes
 from src.export.mesh_assembly import merge_models, model_to_triangles
-from src.export.texture_archive import load_texture_images
-from src.rs2.loc_decoder import LocType, decode_loc_types, loc_recolor_map
+from src.export.texture_archive import load_texture_images, load_texture_sprites
+from src.rs2.loc_decoder import LocType, decode_loc_types, loc_display_name, loc_examine_text, loc_is_interactable, loc_menu_name, loc_recolor_map
 from src.rs2.model_decoder import decode_model
 from src.rs2.palette import build_palette
 
@@ -36,8 +36,19 @@ def _rotate_y90(verts: list[list[int]]) -> None:
         v[2] = -x
 
 
-def _transform(verts: list[list[int]], loc: LocType, rotation: int) -> None:
-    for _ in range(rotation % 4):
+def _rotate_y180(verts: list[list[int]]) -> None:
+    """317 Model.rotateY180 — negate Z only (not X). Face A/C swap handled at export."""
+    for v in verts:
+        v[2] = -v[2]
+
+
+def _transform(verts: list[list[int]], loc: LocType, rotation: int) -> bool:
+    """Apply LocType.getModel rotation. Returns True when invert^rot>3 flip was applied."""
+    rot = rotation & 0xFF
+    flip = bool(loc.invert ^ (rot > 3))
+    if flip:
+        _rotate_y180(verts)
+    for _ in range(rot):
         _rotate_y90(verts)
     if loc.scale_x != 128 or loc.scale_y != 128 or loc.scale_z != 128:
         for v in verts:
@@ -49,6 +60,7 @@ def _transform(verts: list[list[int]], loc: LocType, rotation: int) -> None:
             v[0] += loc.translate_x
             v[1] += loc.translate_y
             v[2] += loc.translate_z
+    return flip
 
 
 @dataclass
@@ -58,13 +70,19 @@ class LocRenderContext:
     palette: list[int]
     anim: "AnimationData | None" = None
     textures: dict[int, object] | None = None
+    texture_sprites: dict | None = None
     _textures_loaded: bool = False
 
     def ensure_textures(self) -> dict[int, object]:
         if not self._textures_loaded:
-            self.textures = load_texture_images(self.cache)
+            self.texture_sprites = load_texture_sprites(self.cache)
+            self.textures = {tid: s.image for tid, s in self.texture_sprites.items()}
             self._textures_loaded = True
         return self.textures or {}
+
+    def ensure_texture_sprites(self) -> dict:
+        self.ensure_textures()
+        return self.texture_sprites or {}
 
     def get(self, loc_id: int) -> LocType | None:
         return self.locs.get(loc_id)
@@ -98,7 +116,12 @@ def build_loc_glb_bytes(
     if kind is None or kind not in kinds:
         kind = 10 if 10 in kinds else kinds[0]
 
-    model_ids = loc.model_ids_for_kind(kind)
+    # Kind 11 (diagonal centrepiece) uses the kind-10 model + extra scene yaw in the viewer.
+    model_kind = 10 if kind == 11 else kind
+    if model_kind not in kinds and kind in kinds:
+        model_kind = kind
+
+    model_ids = loc.model_ids_for_kind(model_kind)
     model = _load_model(ctx, model_ids)
     if model is None or not model.faces:
         return None
@@ -111,7 +134,10 @@ def build_loc_glb_bytes(
     if ctx.anim is not None and loc.seq_id >= 0:
         seq = ctx.anim.seqs.get(loc.seq_id)
 
-    label_vertices = build_label_vertices(model.vertex_skins) if model.vertex_skins else []
+    label_vertices = build_label_vertices(model.vertex_skins)
+    # Rigid seq locs (e.g. some torches) have no vertex skins; treat all verts as one group.
+    if not label_vertices and seq is not None and model.vertices:
+        label_vertices = [list(range(len(model.vertices)))]
 
     def _loc_pose(frame: int) -> list[list[int]]:
         work = [list(v) for v in model.vertices]
@@ -124,8 +150,11 @@ def build_loc_glb_bytes(
         _transform(work, loc, rotation)
         return work
 
+    verts = _loc_pose(0)
+    flipped = bool(loc.invert ^ ((rotation & 0xFF) > 3))
+
     frame_deltas = frame_color_deltas = frame_durations = export_alphas = None
-    if seq is not None and seq.frame_count > 1 and model.vertex_skins and ctx.anim is not None:
+    if seq is not None and seq.frame_count > 1 and ctx.anim is not None:
         morphs = compute_seq_morphs(
             model,
             seq,
@@ -138,8 +167,6 @@ def build_loc_glb_bytes(
         if morphs is not None:
             frame_deltas, frame_color_deltas, frame_durations, export_alphas = morphs
 
-    verts = _loc_pose(0)
-
     triangles = model_to_triangles(
         model,
         ctx.palette,
@@ -147,8 +174,10 @@ def build_loc_glb_bytes(
         scale_xy=128,
         scale_z=128,
         textures=ctx.ensure_textures(),
+        texture_sprites=ctx.ensure_texture_sprites(),
         vertices=verts,
         face_alphas=export_alphas,
+        flip_winding=flipped,
     )
     if not triangles:
         return None
@@ -164,7 +193,7 @@ def build_loc_glb_bytes(
         # client so animated scenery (fires, etc.) runs at its true 317 cadence.
         frame_gap=0,
         loop=True,
-        morph_interpolation="LINEAR",
+        morph_interpolation="STEP",
         anim_name="loc",
     )
 
@@ -174,13 +203,18 @@ def loc_manifest_entry(loc: LocType) -> dict:
     default_kind = 10 if 10 in kinds else (kinds[0] if kinds else -1)
     return {
         "id": loc.id,
-        "name": loc.name or f"loc_{loc.id}",
+        "menuName": loc_menu_name(loc) or "",
+        "name": loc_display_name(loc),
         "file": f"/api/loc/{loc.id}.glb",
         "kinds": kinds,
         "defaultKind": default_kind,
+        "sizeX": loc.size_x,
+        "sizeZ": loc.size_z,
         "modelIds": list(loc.model_ids or []),
         "actions": [a for a in (loc.actions or []) if a],
-        "examine": loc.examine or "",
+        "examine": loc_examine_text(loc),
+        "interactable": loc_is_interactable(loc),
+        "debugName": loc.debug_name or "",
         "source": "cache",
     }
 

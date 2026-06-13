@@ -1,6 +1,8 @@
 # RuneBox
 
-A browser-based **RuneScape sandbox** built on a live game cache. Explore NPCs, objects, and scenery as GLB models, edit tile worlds, play chess with animated NPC pieces, customize characters, and clone NPCs with per-part recolours — all synthesized on demand in Python.
+A browser-based **RuneScape sandbox** built on a live **377 cache**. RuneBox decodes Jagex map, landscape, and model data in Python, exports GLB on demand, and renders it in the browser with **WebGL / Three.js** — terrain, scenery, NPCs, and UI sprites straight from cache.
+
+![RuneBox world viewer — RS377 region loaded in Three.js](docs/viewer-world-screenshot.png)
 
 <img width="1324" height="838" alt="image" src="https://github.com/user-attachments/assets/cb1672a4-8dfe-4850-ad8d-07f6575616c9" />
 
@@ -62,15 +64,26 @@ python -m src.cli.cache_status
 | Mode | What it does |
 |------|----------------|
 | **Browse** | NPCs, objects, locations, spot anims from cache |
-| **World** | Tile editor, place scenery/NPCs, walk around, combat |
+| **World** | Load RS377 regions (terrain + landscape locs), tile editor, walk around, combat |
 | **Chess** | 8×8 board with RS NPC pieces, capture combat choreography |
 | **Creator** | Human character builder (idk kits) or **clone NPC** with model parts & recolours |
 | **Rave** | Dance floor zone with stage video |
+
+## How it works
+
+| Layer | Role |
+|-------|------|
+| **Python** | Reads OpenRS2 flatfile cache — maps (XTEA), landscape locs, models, sprites, fonts |
+| **Export** | Synthesizes GLB/PNG on demand (`LocType.getModel`, region terrain mesh, minimap) |
+| **Three.js** | `rs_viewer.html` — WebGL terrain, scenery placement, 317-style camera & minimap |
+
+Region loading mirrors the 317 client: `SceneBuilder.readLocs` tile/kind/rotation, wall placement at tile centres, and baked model rotation in export.
 
 ## Project layout
 
 ```text
 cache/              # Your OpenRS2 flatfile extract (contents gitignored)
+docs/               # README screenshots
 rs-sandbox-world/   # Python cache pipeline + web viewer
   src/              # Cache I/O, model decode, GLB export, CLI
   web/              # Three.js viewer (rs_viewer.html)

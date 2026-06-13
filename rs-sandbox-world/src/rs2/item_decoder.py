@@ -47,7 +47,32 @@ class ItemDefinition:
                 ids.append(mid)
         return ids
 
+    @staticmethod
+    def _worn_slot_map(model0: int, model1: int, model2: int) -> dict[str, int | None]:
+        """Worn model slots: body (primary), arms (secondary), extra (tertiary)."""
+        return {
+            "body": model0 if model0 > 0 else None,
+            "arms": model1 if model1 > 0 else None,
+            "extra": model2 if model2 > 0 else None,
+        }
+
+    def worn_models(self) -> dict[str, dict[str, int | None]]:
+        return {
+            "male": self._worn_slot_map(
+                self.male_model_id0, self.male_model_id1, self.male_model_id2
+            ),
+            "female": self._worn_slot_map(
+                self.female_model_id0, self.female_model_id1, self.female_model_id2
+            ),
+        }
+
+    def recolor_pairs(self) -> list[dict[str, int]]:
+        if not self.src_color or not self.dst_color:
+            return []
+        return [{"src": s, "dst": d} for s, d in zip(self.src_color, self.dst_color)]
+
     def to_dict(self) -> dict:
+        worn = self.worn_models()
         return {
             "itemId": self.id,
             "name": self.name,
@@ -55,11 +80,8 @@ class ItemDefinition:
             "modelId": self.model_id,
             "groundModelIds": self.ground_model_ids(),
             "wornModelIds": self.worn_model_ids(),
-            "recolors": (
-                [{"src": s, "dst": d} for s, d in zip(self.src_color, self.dst_color)]
-                if self.src_color and self.dst_color
-                else None
-            ),
+            "worn": worn,
+            "recolors": self.recolor_pairs() or None,
             "cost": self.cost,
             "stackable": self.stackable,
             "members": self.members,

@@ -10,11 +10,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.export.uv_baking import planar_uvs
+from src.export.texture_archive import TextureSprite
 from src.rs2.model_decoder import RSModel, decode_model
 from src.rs2.palette import hsl_to_rgb
 
 Vec3 = tuple[float, float, float]
 Vec2 = tuple[float, float]
+
+# RS face priority is 0–11 within one model. Stacked NPC component models are
+# drawn back-to-front in the client without a depth buffer; our GLB merge uses
+# z-buffering so coplanar clothing/body faces z-fight unless later layers get
+# a higher effective priority (encoded in material names for polygon offset).
+MODEL_LAYER_STRIDE = 12
+MAX_DRAW_PRIORITY = 127
 
 
 def _build_srgb_to_linear_lut() -> list[int]:
@@ -72,12 +80,7 @@ def _scaled_y_up(vertex: list[int], scale_xy: int, scale_z: int) -> Vec3:
     sx = scale_xy / 128.0
     sz = scale_z / 128.0
     x, y, z = vertex
-    # RS Y axis points down. Convert to a Y-up scene with a proper 180 deg
-    # rotation about X (negate Y *and* Z) rather than a bare Y mirror. A mirror
-    # has determinant -1, which inverts every face's winding and forces
-    # double-sided rendering (causing z-fighting on RS' duplicated two-sided
-    # faces). The rotation preserves RS' native outward winding so back-face
-    # culling works.
+    # RS Y-down → Y-up; negate Z so rotateY90 facing matches 317 (rot 1 = north/+Z).
     return (float(x) * sx, float(-y) * sz, float(-z) * sx)
 
 
@@ -92,6 +95,26 @@ def _face_priority(model: RSModel, index: int) -> int:
     return 0
 
 
+def _stacked_priority(face_priority: int, model_layer: int) -> int:
+    """Effective draw priority for a face on the Nth stacked component model."""
+    return min(MAX_DRAW_PRIORITY, face_priority + model_layer * MODEL_LAYER_STRIDE)
+
+
+def ordered_model_ids(
+    base_ids: list[int] | None,
+    extra_ids: list[int] | None = None,
+) -> list[int]:
+    """Base body/NPC models first, equipment/cape add-ons last (317 draw order)."""
+    mids = list(base_ids or [])
+    for mid in extra_ids or []:
+        if mid is None:
+            continue
+        mid = int(mid)
+        if mid >= 0 and mid not in mids:
+            mids.append(mid)
+    return mids
+
+
 def model_to_triangles(
     model: RSModel,
     palette: list[int],
@@ -99,9 +122,12 @@ def model_to_triangles(
     scale_xy: int = 128,
     scale_z: int = 128,
     textures: dict[int, object] | None = None,
+    texture_sprites: dict[int, TextureSprite] | None = None,
     *,
     vertices: list[list[int]] | None = None,
     face_alphas: list[int] | None = None,
+    model_layer: int = 0,
+    flip_winding: bool = False,
 ) -> list[Triangle]:
     recolor = recolor or {}
     vertices = vertices if vertices is not None else model.vertices
@@ -109,11 +135,15 @@ def model_to_triangles(
     triangles: list[Triangle] = []
 
     for i, (a, b, c) in enumerate(model.faces):
+        if flip_winding:
+            a, c = c, a
         info = model.face_infos[i] if model.face_infos else 0
         color = model.face_colors[i]
         alpha_rs = face_alphas_src[i] if face_alphas_src else 0
         textured = info is not None and (info & 2) == 2
-        priority = _face_priority(model, i)
+        priority = _stacked_priority(_face_priority(model, i), model_layer)
+        if isinstance(model, MergedModel) and model.face_priorities is not None:
+            priority = model.face_priorities[i]
 
         p0 = _scaled_y_up(vertices[a], scale_xy, scale_z)
         p1 = _scaled_y_up(vertices[b], scale_xy, scale_z)
@@ -127,6 +157,11 @@ def model_to_triangles(
                 p, q, r = model.textured_faces[pqr_index]
                 try:
                     uv0, uv1, uv2 = planar_uvs(vertices, p, q, r, a, b, c)
+                    sprite = (texture_sprites or {}).get(color)
+                    if sprite is not None:
+                        uv0 = sprite.remap_uv(*uv0)
+                        uv1 = sprite.remap_uv(*uv1)
+                        uv2 = sprite.remap_uv(*uv2)
                     triangles.append(
                         Triangle(
                             p0,
@@ -146,7 +181,7 @@ def model_to_triangles(
                     )
                     continue
                 except (ValueError, IndexError):
-                    pass
+                    continue
 
         hsl = recolor.get(color, color)
         r8, g8, b8 = hsl_to_rgb(hsl, palette)
@@ -192,6 +227,7 @@ def merge_models(model_ids, cache) -> MergedModel | None:
     vertex_skins: list[int] = []
     face_skins: list[int] = []
 
+    model_layer = 0
     for model_id in model_ids or []:
         raw = cache.read_model(model_id)
         if raw is None:
@@ -215,7 +251,7 @@ def merge_models(model_ids, cache) -> MergedModel | None:
             faces.append((a + v_off, b + v_off, c + v_off))
             face_colors.append(model.face_colors[i])
             face_alphas.append(model.face_alphas[i] if model.face_alphas else 0)
-            face_priorities.append(_face_priority(model, i))
+            face_priorities.append(_stacked_priority(_face_priority(model, i), model_layer))
             face_skins.append(model.face_skins[i] if model.face_skins else 0)
 
             info = model.face_infos[i] if model.face_infos else 0
@@ -225,6 +261,8 @@ def merge_models(model_ids, cache) -> MergedModel | None:
                 # Re-pack the textured face's pqr index with the merge offset.
                 info = (((info >> 2) + t_off) << 2) | (info & 3)
             face_infos.append(info)
+
+        model_layer += 1
 
     if not vertices or not faces:
         return None
@@ -270,11 +308,13 @@ def assemble_npc_triangles(
     cache,
     palette: list[int],
     textures: dict[int, object] | None = None,
+    texture_sprites=None,
 ) -> list[Triangle]:
     """Merge an NPC's component models into a single recoloured triangle soup."""
     recolor = npc_recolor_map(npc)
     triangles: list[Triangle] = []
 
+    model_layer = 0
     for model_id in npc.model_ids or []:
         raw = cache.read_model(model_id)
         if raw is None:
@@ -290,7 +330,10 @@ def assemble_npc_triangles(
                 scale_xy=npc.scale_xy,
                 scale_z=npc.scale_z,
                 textures=textures,
+                texture_sprites=texture_sprites,
+                model_layer=model_layer,
             )
         )
+        model_layer += 1
 
     return triangles

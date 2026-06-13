@@ -132,6 +132,9 @@ def render_text(font: dict, text: str, rgb: int = 0xFFFFFF, shadow: bool = True,
         pen = origin_x
         for ch in text:
             c = ord(ch)
+            if ch == " ":
+                pen += advance[c]
+                continue
             gw = widths[c]
             gh = heights[c]
             mask = masks[c]

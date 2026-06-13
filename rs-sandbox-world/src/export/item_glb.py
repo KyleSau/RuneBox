@@ -65,13 +65,56 @@ def build_object_glb_bytes(ctx: ObjectRenderContext, item_id: int) -> bytes | No
 
 
 def object_manifest_entry(item) -> dict:
+    worn = item.worn_model_ids()
     return {
         "id": item.id,
         "name": item.name or f"object_{item.id}",
         "file": f"/api/object/{item.id}.glb",
         "modelId": item.model_id,
+        "wornModelIds": worn or None,
+        "hasWornModels": bool(worn),
         "source": "cache",
     }
+
+
+def item_detail_entry(item) -> dict:
+    """Full item detail for equip / NPC override tooling."""
+    entry = item.to_dict()
+    entry["id"] = item.id
+    entry["file"] = f"/api/item/{item.id}.glb"
+    entry["detailUrl"] = f"/api/item/{item.id}.json"
+    return entry
+
+
+def search_items(ctx: ObjectRenderContext, query: str, *, limit: int = 30) -> list[dict]:
+    """Name/id search for equippable items (worn models preferred in sort)."""
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    limit = max(1, min(limit, 100))
+    scored: list[tuple[int, int, dict]] = []
+    id_query: int | None = None
+    if q.isdigit():
+        id_query = int(q)
+
+    for item_id in range(ctx.items.count):
+        item = ctx.items.get(item_id)
+        if item is None or not item.name:
+            continue
+        name_l = item.name.lower()
+        worn = item.worn_model_ids()
+        if id_query is not None:
+            if item_id != id_query and q not in name_l:
+                continue
+            rank = 0 if item_id == id_query else 1
+        elif q not in name_l:
+            continue
+        else:
+            rank = 0 if name_l.startswith(q) else (1 if name_l.split()[0].startswith(q) else 2)
+        scored.append((rank, item_id, item_detail_entry(item)))
+
+    scored.sort(key=lambda t: (t[0], (t[2].get("name") or "").lower(), t[1]))
+    return [entry for _, _, entry in scored[:limit]]
 
 
 def build_object_manifest(ctx: ObjectRenderContext) -> dict:

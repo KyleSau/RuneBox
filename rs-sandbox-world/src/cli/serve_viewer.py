@@ -21,6 +21,7 @@ from src.export.npc_glb import (
     build_model_glb_bytes,
     build_npc_custom_glb_bytes,
     build_npc_glb_bytes,
+    model_part_detail,
     npc_clone_detail,
     npc_recolor_pairs,
     build_npc_manifest,
@@ -30,6 +31,8 @@ from src.export.item_glb import (
     build_object_glb_bytes,
     build_object_manifest,
     create_object_context,
+    item_detail_entry,
+    search_items,
 )
 from src.export.loc_glb import (
     build_loc_glb_bytes,
@@ -51,6 +54,12 @@ from src.export.spotanim_glb import (
     create_gfx_context,
 )
 from src.export.sprite_archive import build_sprite_context, build_sprite_manifest
+from src.export.title_archive import (
+    build_title_context,
+    render_flame_background,
+    render_title_background,
+    title_sprite_png,
+)
 from src.export.texture_archive import build_texture_context, build_texture_manifest
 from src.export.font_archive import (
     build_font_context,
@@ -62,21 +71,40 @@ from src.export.interface_render import (
     build_interface_manifest,
     render_interface_png,
 )
+from src.export.region_glb import build_region_terrain_glb
+from src.export.minimap_png import build_region_minimap_png
+from src.cache.map_index import (
+    default_xtea_keys_path,
+    load_map_file_index,
+    load_xtea_keys,
+    read_landscape_bytes,
+    read_terrain_bytes,
+    resolve_landscape_file_id,
+)
+from src.rs2.landscape_decoder import decode_landscape, landscape_summary
+from src.rs2.map_decoder import decode_terrain_map
 from src.rs2.sound_bank import has_sound, load_sounds, render_wav, sound_count
 
 _SOUND_API = re.compile(r"^/api/sound/(\d+)\.wav$")
 _NPC_API = re.compile(r"^/api/npc/(\d+)\.glb$")
 _NPC_CLONE_JSON = re.compile(r"^/api/npc/(\d+)/clone\.json$")
 _MODEL_API = re.compile(r"^/api/model/(\d+)\.glb$")
+_MODEL_SLOTS_JSON = re.compile(r"^/api/model/(\d+)/slots\.json$")
 _HSL_RGB_JSON = "/api/hsl-rgb.json"
 _SPOT_API = re.compile(r"^/api/spotanim/(\d+)\.glb$")
 _OBJECT_API = re.compile(r"^/api/object/(\d+)\.glb$")
 _ITEM_API = re.compile(r"^/api/item/(\d+)\.glb$")
+_ITEM_JSON = re.compile(r"^/api/item/(\d+)\.json$")
+_ITEMS_SEARCH = "/api/items/search"
 _LOC_API = re.compile(r"^/api/loc/(\d+)\.glb$")
 _SPRITE_API = re.compile(r"^/api/sprite/([a-z0-9_]+)/(\d+)\.png$")
 _FONT_API = re.compile(r"^/api/font/([a-z0-9_]+)\.png$")
 _INTERFACE_API = re.compile(r"^/api/interface/(\d+)\.png$")
 _TEXTURE_API = re.compile(r"^/api/texture/(\d+)\.png$")
+_TITLE_SPRITE_API = re.compile(r"^/api/title/([a-z]+)/(\d+)\.png$")
+_TITLE_BG = "/api/title/bg.png"
+_TITLE_FLAME_BG = "/api/title/flame_bg.png"
+_TITLE_FLAME_LEFT = "/api/title/flame_bg_left.png"
 _PLAYER_API = "/api/player.glb"
 _SOUND_PING = "/api/sound/ping"
 _API_PING = "/api/ping.json"
@@ -94,16 +122,23 @@ _SPRITES_JSON = "/api/sprites.json"
 _FONTS_JSON = "/api/fonts.json"
 _INTERFACES_JSON = "/api/interfaces.json"
 _TEXTURES_JSON = "/api/textures.json"
-_VIEWER_BUILD = "serve-viewer-5"
+_VIEWER_BUILD = "serve-viewer-65"
 _AUDIO_SOURCE = "cache-synth"
 _MODEL_SOURCE = "cache-synth"
+_REGION_JSON = re.compile(r"^/api/region/(\d+)/(\d+)\.json$")
+_REGION_OBJECTS = re.compile(r"^/api/region/(\d+)/(\d+)/objects\.json$")
+_REGION_TERRAIN = re.compile(r"^/api/region/(\d+)/(\d+)/terrain\.glb$")
+_REGION_MINIMAP = re.compile(r"^/api/region/(\d+)/(\d+)/minimap\.png$")
 _BLOCKED_STATIC_AUDIO = (".mp3", ".ogg", ".m4a", ".flac")
 
 
-def _parse_npc_anims(query: str) -> list[tuple[int, str]]:
+def _parse_npc_anims(query: str | dict) -> list[tuple[int, str]]:
     """Parse ``anims=727:cast_wave,407:attack_2h`` query pairs."""
     out: list[tuple[int, str]] = []
-    raw = parse_qs(query).get("anims", [""])[0]
+    if isinstance(query, dict):
+        raw = query.get("anims", [""])[0]
+    else:
+        raw = parse_qs(query).get("anims", [""])[0]
     for part in raw.split(","):
         part = part.strip()
         if not part:
@@ -142,6 +177,13 @@ class ViewerHandler(SimpleHTTPRequestHandler):
     _iface_cache: dict | None = None
     _tex_ctx: dict | None = None
     _tex_manifest: bytes | None = None
+    _title_ctx: dict | None = None
+    _title_bg: bytes | None = None
+    _title_flame_bg: bytes | None = None
+    _cache: CacheReader | None = None
+    _map_file_index: dict | None = None
+    _xtea_keys: dict | None = None
+    _title_flame_bg_left: bytes | None = None
 
     def __init__(self, *args, directory: str | None = None, **kwargs):
         super().__init__(*args, directory=directory, **kwargs)
@@ -166,6 +208,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     "player": ViewerHandler._player_ctx is not None,
                     "sprites": ViewerHandler._sprite_ctx is not None,
                     "sounds": ViewerHandler._sounds_ready,
+                    "regions": ViewerHandler._cache is not None,
                 }
             ).encode("utf-8")
             self.send_response(200)
@@ -197,6 +240,9 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if path in (_OBJECTS_JSON, _ITEMS_JSON):
             self._serve_object_manifest(head_only=head_only)
             return
+        if path == _ITEMS_SEARCH:
+            self._serve_items_search(head_only=head_only)
+            return
         if path == _LOCS_JSON:
             self._serve_loc_manifest(head_only=head_only)
             return
@@ -218,6 +264,15 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if path == _TEXTURES_JSON:
             self._serve_texture_manifest(head_only=head_only)
             return
+        if path == _TITLE_BG:
+            self._serve_title_bg(head_only=head_only)
+            return
+        if path == _TITLE_FLAME_BG:
+            self._serve_title_flame_bg(side="right", head_only=head_only)
+            return
+        if path == _TITLE_FLAME_LEFT:
+            self._serve_title_flame_bg(side="left", head_only=head_only)
+            return
         if path == _PLAYER_API:
             self._serve_player(head_only=head_only)
             return
@@ -233,6 +288,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         match = _IDK_KIT_API.match(path)
         if match:
             self._serve_idk_kit(int(match.group(1)), head_only=head_only)
+            return
+        match = _TITLE_SPRITE_API.match(path)
+        if match:
+            self._serve_title_sprite(match.group(1), int(match.group(2)), head_only=head_only)
             return
         match = _SPRITE_API.match(path)
         if match:
@@ -262,6 +321,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if match:
             self._serve_npc_clone_json(int(match.group(1)), head_only=head_only)
             return
+        match = _MODEL_SLOTS_JSON.match(path)
+        if match:
+            self._serve_model_slots_json(int(match.group(1)), head_only=head_only)
+            return
         match = _MODEL_API.match(path)
         if match:
             self._serve_model_glb(int(match.group(1)), head_only=head_only)
@@ -274,9 +337,29 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if match:
             self._serve_spotanim(int(match.group(1)), head_only=head_only)
             return
+        match = _ITEM_JSON.match(path)
+        if match:
+            self._serve_item_json(int(match.group(1)), head_only=head_only)
+            return
         match = _OBJECT_API.match(path) or _ITEM_API.match(path)
         if match:
             self._serve_object(int(match.group(1)), head_only=head_only)
+            return
+        match = _REGION_JSON.match(path)
+        if match:
+            self._serve_region_json(int(match.group(1)), int(match.group(2)), head_only=head_only)
+            return
+        match = _REGION_TERRAIN.match(path)
+        if match:
+            self._serve_region_terrain(int(match.group(1)), int(match.group(2)), head_only=head_only)
+            return
+        match = _REGION_MINIMAP.match(path)
+        if match:
+            self._serve_region_minimap(int(match.group(1)), int(match.group(2)), head_only=head_only)
+            return
+        match = _REGION_OBJECTS.match(path)
+        if match:
+            self._serve_region_objects(int(match.group(1)), int(match.group(2)), head_only=head_only)
             return
         lower = path.lower()
         if lower.endswith(_BLOCKED_STATIC_AUDIO):
@@ -336,6 +419,49 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         if not head_only:
             self.wfile.write(ViewerHandler._obj_manifest)
+
+    def _serve_items_search(self, *, head_only: bool = False) -> None:
+        ctx = ViewerHandler._obj_ctx
+        if ctx is None:
+            self.send_error(503, "Object index not loaded")
+            return
+        q = self._query().get("q", [""])[0]
+        try:
+            limit = int(self._query().get("limit", ["30"])[0])
+        except ValueError:
+            limit = 30
+        rows = search_items(ctx, q, limit=limit)
+        body = json.dumps({"query": q, "count": len(rows), "items": rows}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
+
+    def _serve_item_json(self, item_id: int, *, head_only: bool = False) -> None:
+        ctx = ViewerHandler._obj_ctx
+        if ctx is None:
+            self.send_error(503, "Object index not loaded")
+            return
+        if item_id < 0 or item_id >= ctx.items.count:
+            self.send_error(404, f"Item {item_id} not in cache")
+            return
+        item = ctx.items.get(item_id)
+        if item is None:
+            self.send_error(404, f"Item {item_id} not in cache")
+            return
+        body = json.dumps(item_detail_entry(item)).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
 
     def _serve_object(self, item_id: int, *, head_only: bool = False) -> None:
         ctx = ViewerHandler._obj_ctx
@@ -399,6 +525,119 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         if not head_only:
             self.wfile.write(glb)
+
+    def _load_region_map(self, region_x: int, region_y: int):
+        cache = ViewerHandler._cache
+        if cache is None:
+            return None
+        raw = read_terrain_bytes(
+            cache,
+            region_x,
+            region_y,
+            index=ViewerHandler._map_file_index,
+        )
+        if not raw:
+            return None
+        return decode_terrain_map(raw, region_x, region_y)
+
+    def _load_region_objects(self, region_x: int, region_y: int):
+        cache = ViewerHandler._cache
+        if cache is None:
+            return None
+        raw = read_landscape_bytes(
+            cache,
+            region_x,
+            region_y,
+            xtea_keys=ViewerHandler._xtea_keys,
+            index=ViewerHandler._map_file_index,
+        )
+        if not raw:
+            return None
+        return decode_landscape(raw, region_x, region_y)
+
+    def _serve_region_json(self, region_x: int, region_y: int, *, head_only: bool = False) -> None:
+        region = self._load_region_map(region_x, region_y)
+        if region is None:
+            self.send_error(404, f"Region ({region_x}, {region_y}) terrain not in cache")
+            return
+        q = self._query()
+        plane = 0
+        if "plane" in q:
+            try:
+                plane = int(q["plane"][0])
+            except (ValueError, IndexError):
+                plane = 0
+        body = json.dumps(region.to_summary_dict(plane=plane)).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
+
+    def _serve_region_terrain(self, region_x: int, region_y: int, *, head_only: bool = False) -> None:
+        region = self._load_region_map(region_x, region_y)
+        if region is None:
+            self.send_error(404, f"Region ({region_x}, {region_y}) terrain not in cache")
+            return
+        glb = build_region_terrain_glb(region, cache=ViewerHandler._cache)
+        if not glb:
+            self.send_error(404, f"Region ({region_x}, {region_y}) has no terrain mesh")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "model/gltf-binary")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("X-RS-GLB-Build", "region-terrain-v1")
+        self.send_header("Content-Length", str(len(glb)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(glb)
+
+    def _serve_region_minimap(self, region_x: int, region_y: int, *, head_only: bool = False) -> None:
+        region = self._load_region_map(region_x, region_y)
+        if region is None:
+            self.send_error(404, f"Region ({region_x}, {region_y}) terrain not in cache")
+            return
+        png = build_region_minimap_png(region, cache=ViewerHandler._cache)
+        if not png:
+            self.send_error(404, f"Region ({region_x}, {region_y}) minimap unavailable")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(png)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(png)
+
+    def _serve_region_objects(self, region_x: int, region_y: int, *, head_only: bool = False) -> None:
+        objects = self._load_region_objects(region_x, region_y)
+        if objects is None:
+            self.send_error(
+                404,
+                f"Region ({region_x}, {region_y}) landscape not in cache or XTEA decrypt failed",
+            )
+            return
+        body = json.dumps(
+            landscape_summary(
+                objects,
+                region_x,
+                region_y,
+                loc_types=ViewerHandler._loc_ctx.locs if ViewerHandler._loc_ctx else None,
+            )
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
 
     def _serve_idk_manifest(self, *, head_only: bool = False) -> None:
         if ViewerHandler._idk_manifest is None:
@@ -474,10 +713,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if not head_only:
             self.wfile.write(glb)
 
-    def _parse_recolor_query(self, query: str) -> dict[int, int]:
-        from urllib.parse import parse_qs
-
-        params = parse_qs(query, keep_blank_values=False)
+    def _parse_recolor_query(self, query: str | dict) -> dict[int, int]:
+        if isinstance(query, dict):
+            params = query
+        else:
+            params = parse_qs(query, keep_blank_values=False)
         recolor_overrides: dict[int, int] = {}
         if "recolor" in params and params["recolor"][0].strip():
             for pair in params["recolor"][0].split(","):
@@ -488,10 +728,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     recolor_overrides[int(src_s)] = int(dst_s)
         return recolor_overrides
 
-    def _parse_npc_custom_query(self, query: str) -> tuple[int, list[int] | None, list[int] | None, dict[int, int]]:
-        from urllib.parse import parse_qs
-
-        params = parse_qs(query, keep_blank_values=False)
+    def _parse_npc_custom_query(self, query: str | dict) -> tuple[int, list[int] | None, list[int] | None, dict[int, int]]:
+        if isinstance(query, dict):
+            params = query
+        else:
+            params = parse_qs(query, keep_blank_values=False)
         base = int(params.get("base", ["0"])[0])
         models: list[int] | None = None
         if "models" in params and params["models"][0].strip():
@@ -531,6 +772,23 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if not head_only:
             self.wfile.write(body)
 
+    def _serve_model_slots_json(self, model_id: int, *, head_only: bool = False) -> None:
+        ctx = ViewerHandler._npc_ctx
+        if ctx is None:
+            self.send_error(503, "Model renderer not ready")
+            return
+        recolor = self._parse_recolor_query(self._query())
+        detail = model_part_detail(ctx, model_id, recolor_overrides=recolor or None)
+        body = json.dumps(detail).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=300")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
+
     def _serve_model_glb(self, model_id: int, *, head_only: bool = False) -> None:
         ctx = ViewerHandler._npc_ctx
         if ctx is None:
@@ -555,9 +813,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         from src.rs2.palette import build_palette
         from src.export.npc_glb import hsl_rgb_hex
 
-        from urllib.parse import parse_qs
-
-        params = parse_qs(self._query(), keep_blank_values=False)
+        params = self._query()
         raw = params.get("i", [""])[0]
         indices = [int(x) for x in raw.split(",") if x.strip().isdigit()]
         palette = build_palette()
@@ -580,7 +836,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         if base <= 0 or ctx.index.get(base) is None:
             self.send_error(400, "Missing or invalid base NPC id")
             return
-        extra_anims = self._parse_npc_anims(self._query())
+        extra_anims = _parse_npc_anims(self._query()) or None
         glb = build_npc_custom_glb_bytes(
             ctx,
             base,
@@ -595,7 +851,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "model/gltf-binary")
         self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
-        self.send_header("X-RS-GLB-Build", "npc-custom-v1")
+        self.send_header("X-RS-GLB-Build", "npc-custom-v2")
+        model_tag = ",".join(str(m) for m in (models or []))
+        if model_tag:
+            self.send_header("X-RS-Model-Ids", model_tag[:512])
         self.send_header("Content-Length", str(len(glb)))
         self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
@@ -647,6 +906,40 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         if not head_only:
             self.wfile.write(glb)
+
+    def _serve_title_bg(self, *, head_only: bool = False) -> None:
+        if ViewerHandler._title_bg is None:
+            self.send_error(503, "Title screen not loaded")
+            return
+        self._send_png(ViewerHandler._title_bg, head_only=head_only)
+
+    def _serve_title_flame_bg(self, *, side: str = "right", head_only: bool = False) -> None:
+        png = ViewerHandler._title_flame_bg_left if side == "left" else ViewerHandler._title_flame_bg
+        if png is None:
+            self.send_error(503, "Title flame bg not loaded")
+            return
+        self._send_png(png, head_only=head_only)
+
+    def _serve_title_sprite(self, name: str, index: int, *, head_only: bool = False) -> None:
+        ctx = ViewerHandler._title_ctx
+        if ctx is None:
+            self.send_error(503, "Title sprites not loaded")
+            return
+        png = title_sprite_png(ctx, name, index)
+        if png is None:
+            self.send_error(404, f"Title sprite {name}/{index} not found")
+            return
+        self._send_png(png, head_only=head_only)
+
+    def _send_png(self, png: bytes, *, head_only: bool = False) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("X-RS-Model-Source", _MODEL_SOURCE)
+        self.send_header("Content-Length", str(len(png)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(png)
 
     def _serve_sprite_manifest(self, *, head_only: bool = False) -> None:
         if ViewerHandler._sprite_manifest is None:
@@ -890,6 +1183,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"Cache: {cache_dir}")
     cache = CacheReader(cache_dir)
+    ViewerHandler._cache = cache
+    ViewerHandler._map_file_index = load_map_file_index(cache)
+    print(f"Map index: {len(ViewerHandler._map_file_index)} regions in versionlist")
+    xtea_path = default_xtea_keys_path()
+    ViewerHandler._xtea_keys = load_xtea_keys(xtea_path)
+    print(f"Region map API: idx4 terrain + landscape (XTEA keys: {len(ViewerHandler._xtea_keys)} from {xtea_path})")
     index = NPCIndex.from_cache(cache_dir=cache_dir)
     print(f"NPC defs: {index.count}")
 
@@ -983,6 +1282,19 @@ def main(argv: list[str] | None = None) -> int:
         ViewerHandler._tex_ctx = None
         ViewerHandler._tex_manifest = None
         print(f"Texture API: FAILED ({exc})")
+
+    try:
+        ViewerHandler._title_ctx = build_title_context(cache)
+        ViewerHandler._title_bg = render_title_background(cache)
+        ViewerHandler._title_flame_bg = render_flame_background(cache, "right")
+        ViewerHandler._title_flame_bg_left = render_flame_background(cache, "left")
+        sprites = ViewerHandler._title_ctx.get("sprites", {})
+        print(f"Title API: bg + {', '.join(f'{k}({len(v)})' for k, v in sprites.items())}")
+    except Exception as exc:
+        ViewerHandler._title_ctx = None
+        ViewerHandler._title_bg = None
+        ViewerHandler._title_flame_bg = None
+        print(f"Title API: FAILED ({exc})")
 
     load_sounds(cache)
     ViewerHandler._sounds_ready = True

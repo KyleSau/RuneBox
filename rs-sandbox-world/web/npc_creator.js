@@ -139,20 +139,82 @@ export function createNpcCreator() {
     previewKitOnly = false;
   }
 
+  function normalizeRecolorEntry(p) {
+    if (Array.isArray(p)) return { src: p[0], dst: p[1] };
+    return { src: p.src, dst: p.dst, srcRgb: p.srcRgb, dstRgb: p.dstRgb };
+  }
+
+  /** Merge top-level recolors[] with per-slot modelParts edits for preview/export. */
+  function recolorsFromSpec(spec) {
+    if (!spec) return recolorPairs.map(normalizeRecolorEntry);
+    const map = new Map();
+    for (const p of spec.recolors || []) {
+      const e = normalizeRecolorEntry(p);
+      if (e.src != null && e.dst != null) map.set(e.src, e.dst);
+    }
+    for (const part of spec.modelParts || []) {
+      for (const slot of part.slots || []) {
+        if (slot.src != null && slot.dst != null) map.set(slot.src, slot.dst);
+      }
+    }
+    if (map.size) return [...map.entries()].map(([src, dst]) => ({ src, dst }));
+    return recolorPairs.map(normalizeRecolorEntry);
+  }
+
+  function exportOverride(name = '') {
+    if (!baseNpcId) return null;
+    const spec = {
+      name: name || `NPC #${baseNpcId}`,
+      base: baseNpcId,
+    };
+    if (cloneModelIds.length) spec.models = cloneModelIds.slice();
+    if (extraModels.length) spec.extra = extraModels.slice();
+    if (recolorPairs.length) {
+      spec.recolors = recolorPairs.map(p => ({ src: p.src, dst: p.dst }));
+    }
+    return spec;
+  }
+
+  function applyOverride(spec) {
+    if (!spec || spec.base == null) throw new Error('override needs a base NPC id');
+    creatorMode = 'npc';
+    baseNpcId = spec.base;
+    cloneModelIds = (spec.models || spec.modelIds || []).slice();
+    extraModels = (spec.extra || spec.extraModels || []).slice();
+    recolorPairs = (spec.recolors || []).map(normalizeRecolorEntry);
+    modelParts = (spec.modelParts || []).map(p => ({
+      id: p.id,
+      missing: !!p.missing,
+      slots: (p.slots || []).map(s => ({ ...s })),
+    }));
+    previewKitOnly = false;
+  }
+
+  function overrideGlbUrl(spec) {
+    const base = spec?.base ?? baseNpcId;
+    if (!base) return null;
+    const params = [`base=${base}`];
+    const mids = spec?.models ?? spec?.modelIds ?? cloneModelIds;
+    if (mids?.length) params.push(`models=${mids.join(',')}`);
+    const pairs = recolorsFromSpec(spec);
+    if (pairs.length) {
+      params.push(`recolor=${pairs.map(p => `${p.src}:${p.dst}`).join(',')}`);
+    }
+    const extra = spec?.extra ?? spec?.extraModels ?? extraModels;
+    if (extra?.length) params.push(`extra=${extra.join(',')}`);
+    params.push(`t=${Date.now()}`);
+    return `/api/npc-custom.glb?${params.join('&')}`;
+  }
+
   function npcCustomGlbUrl(opts = {}) {
     const base = opts.baseNpcId ?? baseNpcId;
     if (!base) return null;
-    const params = [`base=${base}`];
-    const mids = opts.cloneModelIds ?? cloneModelIds;
-    if (mids?.length) params.push(`models=${mids.join(',')}`);
-    const pairs = opts.recolorPairs ?? recolorPairs;
-    if (pairs?.length) {
-      params.push(`recolor=${pairs.map(p => `${p.src}:${p.dst}`).join(',')}`);
-    }
-    const extra = opts.extraModels ?? extraModels;
-    if (extra.length) params.push(`extra=${extra.join(',')}`);
-    params.push(`t=${Date.now()}`);
-    return `/api/npc-custom.glb?${params.join('&')}`;
+    return overrideGlbUrl({
+      base,
+      models: opts.cloneModelIds ?? cloneModelIds,
+      recolors: opts.recolorPairs ?? recolorPairs,
+      extra: opts.extraModels ?? extraModels,
+    });
   }
 
   function previewGlbUrl(opts = {}) {
@@ -256,6 +318,10 @@ export function createNpcCreator() {
     setKit,
     addExtraFromNpc,
     loadNpcClone,
+    exportOverride,
+    applyOverride,
+    overrideGlbUrl,
+    recolorsFromSpec,
     setRecolorSrc,
     effectiveDst,
     modelGlbUrl,

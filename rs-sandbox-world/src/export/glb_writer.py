@@ -23,6 +23,25 @@ _ELEMENT_ARRAY_BUFFER = 34963
 _TRIANGLES = 4
 
 
+def _prepare_rs_texture_rgba(pil_image):
+    """RS Draw3D textures: palette index 0 is transparent; black RGB is also keyed out."""
+    rgba = pil_image.convert("RGBA")
+    px = rgba.load()
+    cutout = False
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                cutout = True
+                continue
+            if r == 0 and g == 0 and b == 0:
+                px[x, y] = (0, 0, 0, 0)
+                cutout = True
+            elif a < 255:
+                cutout = True
+    return rgba, cutout
+
+
 class GLBBuilder:
     def __init__(self) -> None:
         self._bin = bytearray()
@@ -94,19 +113,24 @@ class GLBBuilder:
         return len(self.materials) - 1
 
     def add_texture_material(self, name: str, pil_image, *, blend: bool = False) -> int:
+        rgba, cutout = _prepare_rs_texture_rgba(pil_image)
         buffer = io.BytesIO()
-        pil_image.convert("RGBA").save(buffer, format="PNG")
+        rgba.save(buffer, format="PNG")
         view = self._add_view(buffer.getvalue())
         self.images.append({"bufferView": view, "mimeType": "image/png", "name": name})
         image_index = len(self.images) - 1
 
         if not self.samplers:
+            # 0 = terrain (repeat + mips), 1 = model sprites (repeat + nearest, RS wraps)
             self.samplers.append(
                 {"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}
             )
-        self.textures.append({"source": image_index, "sampler": 0})
+            self.samplers.append(
+                {"magFilter": 9729, "minFilter": 9729, "wrapS": 10497, "wrapT": 10497}
+            )
+        sampler_index = 1 if cutout else 0
+        self.textures.append({"source": image_index, "sampler": sampler_index})
         texture_index = len(self.textures) - 1
-
         mat: dict = {
             "name": name,
             "pbrMetallicRoughness": {
@@ -116,7 +140,10 @@ class GLBBuilder:
             },
             "doubleSided": blend,
         }
-        if blend:
+        if cutout:
+            mat["alphaMode"] = "MASK"
+            mat["alphaCutoff"] = 0.02
+        elif blend:
             mat["alphaMode"] = "BLEND"
         self.materials.append(mat)
         return len(self.materials) - 1
@@ -129,6 +156,8 @@ class GLBBuilder:
         colors: np.ndarray,
         material_index: int | None,
         morph_targets: list[tuple[np.ndarray | None, np.ndarray | None]] | None = None,
+        *,
+        indices: np.ndarray | None = None,
     ) -> None:
         count = len(positions)
         pos = np.ascontiguousarray(positions, dtype="<f4")
@@ -152,9 +181,12 @@ class GLBBuilder:
             normalized=True,
             target=_ARRAY_BUFFER,
         )
-        indices = np.arange(count, dtype="<u4")
+        if indices is None:
+            tri_indices = np.arange(count, dtype="<u4")
+        else:
+            tri_indices = np.ascontiguousarray(indices, dtype="<u4")
         a_idx = self._add_accessor(
-            indices.tobytes(), count, "SCALAR", _UINT, target=_ELEMENT_ARRAY_BUFFER
+            tri_indices.tobytes(), len(tri_indices), "SCALAR", _UINT, target=_ELEMENT_ARRAY_BUFFER
         )
 
         primitive = {

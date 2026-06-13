@@ -191,20 +191,27 @@ def _is_transparent(tri: Triangle) -> bool:
     return tri.rgba[3] < 255
 
 
+def _face_key(tri: Triangle) -> tuple:
+    return (
+        (round(tri.v0[0], 2), round(tri.v0[1], 2), round(tri.v0[2], 2)),
+        (round(tri.v1[0], 2), round(tri.v1[1], 2), round(tri.v1[2], 2)),
+        (round(tri.v2[0], 2), round(tri.v2[1], 2), round(tri.v2[2], 2)),
+    )
+
+
 def _dedupe_triangles(triangles: list[Triangle]) -> list[Triangle]:
-    """Drop exact-duplicate, same-winding faces. RS models (and merged component
-    models) sometimes contain identical coincident faces that z-fight/flicker in
-    a depth-buffered renderer. Opposite-wound coincident pairs (genuine two-sided
-    surfaces like wing membranes) have a different ordered key and are kept; they
-    are resolved by back-face culling instead."""
+    """Drop exact same-winding duplicates on flat colour faces.
+
+    Textured faces (foliage billboards) are never deduped — rounding keys can
+    collapse distinct tris and leave canopy holes.
+    """
     seen: set[tuple] = set()
     out: list[Triangle] = []
     for tri in triangles:
-        key = (
-            (round(tri.v0[0], 2), round(tri.v0[1], 2), round(tri.v0[2], 2)),
-            (round(tri.v1[0], 2), round(tri.v1[1], 2), round(tri.v1[2], 2)),
-            (round(tri.v2[0], 2), round(tri.v2[1], 2), round(tri.v2[2], 2)),
-        )
+        if tri.texture_id is not None:
+            out.append(tri)
+            continue
+        key = _face_key(tri)
         if key in seen:
             continue
         seen.add(key)

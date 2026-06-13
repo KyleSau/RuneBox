@@ -8,13 +8,35 @@ transparent.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from src.rs2.buffer import Buffer
 
 TEXTURE_ARCHIVE_FILE_ID = 6
 MAX_TEXTURES = 50
 
 
-def _decode_sprite(dat_bytes: bytes, idx_bytes: bytes):
+@dataclass(frozen=True)
+class TextureSprite:
+    image: object
+    crop_w: int
+    crop_h: int
+    crop_x: int
+    crop_y: int
+    width: int
+    height: int
+
+    def remap_uv(self, u: float, v: float) -> tuple[float, float]:
+        """Map planar face coords to normalized atlas UV (RS repeats outside 0–1)."""
+        cw = max(self.crop_w, 1)
+        ch = max(self.crop_h, 1)
+        return (
+            (self.crop_x + u * self.width) / cw,
+            (self.crop_y + v * self.height) / ch,
+        )
+
+
+def _decode_sprite(dat_bytes: bytes, idx_bytes: bytes) -> TextureSprite:
     from PIL import Image
 
     dat = Buffer(dat_bytes)
@@ -57,8 +79,14 @@ def _decode_sprite(dat_bytes: bytes, idx_bytes: bytes):
             if entry == 0:
                 continue
             rgb = palette[entry]
-            px[x + crop_x, y + crop_y] = ((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 255)
-    return img
+            r = (rgb >> 16) & 0xFF
+            g = (rgb >> 8) & 0xFF
+            b = rgb & 0xFF
+            # RS Draw3D also keys out solid black texels on foliage sprites.
+            if r == 0 and g == 0 and b == 0:
+                continue
+            px[x + crop_x, y + crop_y] = (r, g, b, 255)
+    return TextureSprite(img, crop_w, crop_h, crop_x, crop_y, width, height)
 
 
 def decode_textures(archive) -> dict[int, "object"]:
@@ -73,14 +101,38 @@ def decode_textures(archive) -> dict[int, "object"]:
         if not dat_bytes:
             continue
         try:
-            images[texture_id] = _decode_sprite(dat_bytes, idx_bytes)
+            images[texture_id] = _decode_sprite(dat_bytes, idx_bytes).image
         except Exception:
             continue
     return images
 
 
+def decode_texture_sprites(archive) -> dict[int, TextureSprite]:
+    """Decode every texture sprite with crop metadata for UV remapping."""
+    idx_bytes = archive.read("index.dat")
+    if not idx_bytes:
+        return {}
+
+    sprites: dict[int, TextureSprite] = {}
+    for texture_id in range(MAX_TEXTURES):
+        dat_bytes = archive.read(f"{texture_id}.dat")
+        if not dat_bytes:
+            continue
+        try:
+            sprites[texture_id] = _decode_sprite(dat_bytes, idx_bytes)
+        except Exception:
+            continue
+    return sprites
+
+
 def load_texture_images(cache) -> dict[int, "object"]:
     """Read archive 6 from a ``CacheReader`` and decode all textures to RGBA."""
+    sprites = load_texture_sprites(cache)
+    return {tid: s.image for tid, s in sprites.items()}
+
+
+def load_texture_sprites(cache) -> dict[int, TextureSprite]:
+    """Read archive 6 and decode sprites plus crop metadata."""
     raw = cache.read_archive(TEXTURE_ARCHIVE_FILE_ID)
     if raw is None:
         return {}
@@ -91,7 +143,7 @@ def load_texture_images(cache) -> dict[int, "object"]:
         archive = FileArchive.load(raw)
     except Exception:
         return {}
-    return decode_textures(archive)
+    return decode_texture_sprites(archive)
 
 
 def build_texture_context(cache) -> dict[int, bytes]:

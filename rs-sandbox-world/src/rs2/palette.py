@@ -80,3 +80,27 @@ def hsl_to_rgb(hsl: int, palette: list[int] | None = None) -> tuple[int, int, in
     index = hsl & 0xFFFF
     rgb = palette[index] & 0xF8F8FF
     return (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+
+
+_SRGB_TO_LINEAR: list[int] | None = None
+
+
+def srgb_to_linear_lut() -> list[int]:
+    """glTF COLOR_0 is linear; RS Draw3D palette entries are sRGB-like."""
+    global _SRGB_TO_LINEAR
+    if _SRGB_TO_LINEAR is None:
+        _SRGB_TO_LINEAR = []
+        for value in range(256):
+            c = value / 255.0
+            c = c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+            _SRGB_TO_LINEAR.append(max(0, min(255, round(c * 255.0))))
+    return _SRGB_TO_LINEAR
+
+
+def srgb8_to_linear8(value: int) -> int:
+    return srgb_to_linear_lut()[value & 0xFF]
+
+
+def srgb_rgba_to_linear8(rgba: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    lut = srgb_to_linear_lut()
+    return (lut[rgba[0] & 0xFF], lut[rgba[1] & 0xFF], lut[rgba[2] & 0xFF], rgba[3])

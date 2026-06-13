@@ -17,7 +17,20 @@
   }
   #ui h1 { font-size: 14px; margin: 0 0 8px; color: #f0c987; }
   #ui label { display: block; margin: 8px 0 3px; color: #b8ad99; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-  #ui select, #ui input[type=text] { width: 100%; padding: 6px; background: #1d1813; color: #e8e2d6; border: 1px solid #3a342b; border-radius: 5px; }
+  #ui select, #ui input[type=text], #ui textarea { width: 100%; padding: 6px; background: #1d1813; color: #e8e2d6; border: 1px solid #3a342b; border-radius: 5px; }
+  #npcOverrideJson { font: 11px/1.35 ui-monospace, Consolas, monospace; min-height: 120px; resize: vertical; }
+  #npcOverrideRecolors { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+  .npcRecolorRow { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; }
+  .npcRecolorRow input[type=number] { width: 72px; padding: 4px; font-size: 11px; }
+  .npcSwatch { display: inline-block; width: 20px; height: 20px; border: 1px solid #666; flex: 0 0 20px; cursor: pointer; image-rendering: pixelated; }
+  .npcSwatch.pickable:hover { outline: 2px solid #f0c987; }
+  #npcOverridePalettePop { margin-top: 8px; padding: 8px; background: #1a1611; border: 1px solid #4a4336; border-radius: 6px; }
+  #npcOverridePaletteGrid { display: grid; grid-template-columns: repeat(32, 1fr); gap: 1px; margin-top: 6px; max-height: 140px; overflow-y: auto; }
+  #npcOverridePaletteGrid button { width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid #333; min-width: 0; cursor: pointer; }
+  #npcOverridePaletteGrid button.sel { outline: 2px solid #fff; z-index: 1; }
+  #npcOverrideItemResults { width: 100%; margin-top: 4px; height: auto; }
+  #npcOverrideItemSlots .row { margin-top: 4px; }
+  .npcItemSlotBtn { flex: 1; font-size: 11px; }
   .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
   .row label { margin: 0; text-transform: none; letter-spacing: 0; color: #e8e2d6; font-size: 12px; }
   #status { margin-top: 10px; font-size: 11px; color: #9c917d; white-space: pre-line; }
@@ -33,13 +46,64 @@
   #ui summary::before { content: '\25B8\00a0'; color: #9c917d; }
   #ui details[open] > summary::before { content: '\25BE\00a0'; }
   .hint { font-size: 11px; color: #9c917d; }
-  #hud-fps {
+  #hud-stack {
     position: fixed; top: 12px; right: 12px; z-index: 10;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+    pointer-events: none;
+  }
+  #hud-fps {
     padding: 6px 10px; font-size: 12px; font-variant-numeric: tabular-nums;
     color: #e8e2d6; background: rgba(20,17,14,0.82); border: 1px solid #3a342b;
-    border-radius: 6px; backdrop-filter: blur(6px); pointer-events: none;
+    border-radius: 6px; backdrop-filter: blur(6px);
   }
   #hud-fps span { color: #9c917d; }
+  /* 317 minimap: compass (bottom) → rotating map → mapback frame (top). */
+  #hud-minimap {
+    position: relative; width: 172px; height: 156px;
+    image-rendering: pixelated;
+    pointer-events: auto;
+  }
+  #hud-minimap[hidden] { display: none !important; }
+  #minimapCompass {
+    position: absolute; left: 25px; top: 25px;
+    width: 33px; height: 33px;
+    transform: translate(-50%, -50%);
+    transform-origin: center center;
+    image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 4;
+  }
+  #minimapViewport {
+    position: absolute; left: 25px; top: 5px;
+    width: 146px; height: 151px;
+    overflow: hidden;
+    /* Circular window matching mapback cutout (317 areaMapback). */
+    clip-path: circle(73px at 50% 50%);
+    z-index: 2;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  #minimapImage {
+    position: absolute; left: 50%; top: 50%;
+    width: 100%; height: 100%; object-fit: cover;
+    transform: translate(-50%, -50%);
+    transform-origin: center center;
+    image-rendering: pixelated;
+  }
+  #minimapDot {
+    position: absolute; width: 3px; height: 3px; background: #fff;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.8);
+    z-index: 1;
+    pointer-events: none;
+  }
+  #minimapMapback {
+    position: absolute; left: 0; top: 0;
+    display: block; width: 172px; height: 156px;
+    image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 3;
+  }
   /* RS-style world overlays: hit splats, health bars, click crosses, menu, hover text. */
   #worldOverlay { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
   /* Health bar: RS draws 30x5, green (current) over red (missing), centered above the head. */
@@ -49,7 +113,9 @@
   .hitsplat { position: absolute; width: 25px; height: 25px; transform: translate(-50%, -50%); background-repeat: no-repeat; background-position: center; image-rendering: pixelated;
     display: flex; align-items: center; justify-content: center; }
   .hitsplat > .hsnum { display: block; image-rendering: pixelated; }
-  #rsCross { position: fixed; width: 28px; height: 28px; z-index: 6; pointer-events: none; transform: translate(-50%, -50%); background-repeat: no-repeat; background-position: center; display: none; }
+  #rsCross { position: fixed; width: 16px; height: 16px; z-index: 6; pointer-events: none;
+    transform: translate(-50%, -50%); background-repeat: no-repeat; background-position: center;
+    image-rendering: pixelated; display: none; }
   /* Top-left hover text: white action + coloured target (b12_full bold + shadow). */
   #rsHover { position: fixed; top: 26px; left: 14px; z-index: 6; pointer-events: none; display: none;
     font: 700 16px Helvetica, Arial, sans-serif; text-shadow: 1.5px 1.5px 0 #000; }
@@ -79,12 +145,56 @@
   /* Real 317 interfaces (equipment/skills/prayer/magic/logout/music) rendered to PNG. */
   #rsIface { position: absolute; inset: 0; width: 190px; height: 261px;
     display: none; image-rendering: pixelated; }
+  /* 317 fixed-mode chatbox (bottom-left) — chatback sprite + p12_full lines. */
+  #rsChat {
+    position: fixed; left: 8px; bottom: 8px; z-index: 8;
+    width: min(519px, calc(100vw - 220px)); height: 142px;
+    image-rendering: pixelated; user-select: text;
+  }
+  #rsChatBack {
+    position: absolute; inset: 0;
+    background: url(/api/sprite/chatback/0.png) no-repeat;
+    background-size: 100% 100%;
+    image-rendering: pixelated;
+    pointer-events: none;
+  }
+  #rsChatLog {
+    position: absolute; left: 14px; right: 18px; top: 62px; bottom: 26px;
+    overflow-y: auto; color: transparent;
+    scrollbar-width: thin;
+  }
+  #rsChatLog .line { display: block; height: 14px; margin: 0 0 1px; }
+  #rsChatLog .line img {
+    display: block; height: 14px; width: auto;
+    image-rendering: pixelated;
+  }
+  #rsChatInput {
+    position: absolute; left: 18px; right: 18px; bottom: 6px; height: 18px;
+    background: transparent; border: none; outline: none;
+    font: 12px/14px 'Courier New', monospace; color: #ffff00;
+    text-shadow: 1px 1px 0 #000; caret-color: #ffff00;
+  }
 </style>
 </head>
 <body>
 <div id="app"></div>
-<div id="hud-fps" aria-live="polite"><span>FPS</span> —</div>
+<div id="hud-stack">
+  <div id="hud-fps" aria-live="polite"><span>FPS</span> —</div>
+  <div id="hud-minimap" hidden>
+    <img id="minimapCompass" src="/api/sprite/compass/0.png" width="33" height="33" alt="" />
+    <div id="minimapViewport">
+      <img id="minimapImage" alt="" />
+      <div id="minimapDot"></div>
+    </div>
+    <img id="minimapMapback" src="/api/sprite/mapback/0.png" width="172" height="156" alt="" />
+  </div>
+</div>
 <div id="worldOverlay"></div>
+<div id="rsChat" hidden>
+  <div id="rsChatBack"></div>
+  <div id="rsChatLog"></div>
+  <input id="rsChatInput" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Press Enter to chat…" />
+</div>
 <div id="rsCross"></div>
 <div id="rsHover"></div>
 <div id="rsMenu"></div>
@@ -131,8 +241,83 @@
       </select>
     </div>
     <div class="row">
-      <label><input type="checkbox" id="smooth" checked /> Smooth shading (Gouraud)</label>
+      <label for="shadingMode" style="margin:0;">Shading</label>
+      <select id="shadingMode" style="flex:1;">
+        <option value="flat317">317 flat</option>
+        <option value="smooth317" selected>317 smooth (Gouraud)</option>
+        <option value="lambert">Lambert lit</option>
+        <option value="standard">Standard (per-pixel)</option>
+      </select>
     </div>
+    <div class="row">
+      <label><input type="checkbox" id="animTween" checked /> Animation tweening</label>
+    </div>
+    <div class="row">
+      <label for="msaaSamples" style="margin:0;">MSAA</label>
+      <select id="msaaSamples" style="flex:1;">
+        <option value="1" selected>Off (fast)</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+        <option value="16">16×</option>
+      </select>
+    </div>
+    <details id="npcOverridePanel" style="display:none;">
+      <summary>NPC override (JSON)</summary>
+      <div class="hint" style="margin-top:6px;">Load an NPC, search items to equip worn models by slot, recolour below, then Apply &amp; preview.</div>
+      <label for="npcOverrideJson" style="margin-top:8px;">Override JSON</label>
+      <textarea id="npcOverrideJson" spellcheck="false" placeholder='{"name":"White King","base":212,"recolors":[{"src":934,"dst":127}]}'></textarea>
+      <label style="margin-top:8px;">Equip item <span class="hint" style="text-transform:none;font-size:10px;">(search by name — adds worn body/arms models)</span></label>
+      <div class="row" style="margin-top:4px;flex-wrap:wrap;">
+        <input id="npcOverrideItemSearch" type="text" placeholder="e.g. dragon chainbody" style="flex:1;" autocomplete="off" />
+        <button id="npcOverrideItemSearchBtn" type="button" style="flex:0 0 auto;">Search</button>
+      </div>
+      <select id="npcOverrideItemResults" size="5" style="display:none;"></select>
+      <div id="npcOverrideItemDetail" class="hint" style="margin-top:4px;display:none;"></div>
+      <div class="row" style="margin-top:4px;flex-wrap:wrap;display:none;" id="npcOverrideItemOpts">
+        <label style="margin:0;">Worn</label>
+        <select id="npcOverrideItemGender" style="flex:1;">
+          <option value="male">Male models</option>
+          <option value="female">Female models</option>
+        </select>
+        <label style="margin:0;white-space:nowrap;"><input type="checkbox" id="npcOverrideItemRecolors" checked /> Recolors</label>
+      </div>
+      <div id="npcOverrideItemSlots"></div>
+      <label style="margin-top:8px;">Model parts <span class="hint" style="text-transform:none;font-size:10px;">(order matters — preview each to find whip/hat)</span></label>
+      <div id="npcOverrideModels" class="hint">Load an NPC to edit model parts.</div>
+      <div class="row" style="margin-top:4px;flex-wrap:wrap;">
+        <input id="npcOverrideAddModel" type="text" placeholder="model id" style="flex:1;" />
+        <button id="npcOverrideAddModelBtn" type="button" style="flex:0 0 auto;">Add part</button>
+      </div>
+      <label style="margin-top:8px;">Recolour slots <span class="hint" style="text-transform:none;font-size:10px;">(click dst swatch → pick HSL colour)</span></label>
+      <div id="npcOverrideRecolors" class="hint">Load an NPC to see recolour slots.</div>
+      <div id="npcOverridePalettePop" style="display:none;">
+        <div class="hint" style="margin:0;">Picking colour for <b id="npcOverridePaletteTarget">dst</b> — click a swatch below</div>
+        <div class="row" style="margin-top:6px;flex-wrap:wrap;">
+          <button type="button" id="npcOverridePalBlack" style="flex:1;">Black (0)</button>
+          <button type="button" id="npcOverridePalWhite" style="flex:1;">White (127)</button>
+          <button type="button" id="npcOverridePalClose" style="flex:0 0 auto;">Close</button>
+        </div>
+        <label for="npcOverridePaletteLight" style="margin-top:6px;">Lightness</label>
+        <input id="npcOverridePaletteLight" type="range" min="0" max="127" value="64" style="width:100%;" />
+        <div id="npcOverridePaletteGrid"></div>
+      </div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;">
+        <button id="npcOverrideLoad" type="button" style="flex:1;">Load from NPC</button>
+        <button id="npcOverrideApply" type="button" style="flex:1;">Apply &amp; preview</button>
+      </div>
+      <div class="row" style="margin-top:4px;flex-wrap:wrap;">
+        <input id="npcOverrideName" type="text" placeholder="override name" style="flex:2;" />
+        <button id="npcOverrideSave" type="button" style="flex:1;">Save</button>
+      </div>
+      <label for="npcOverrideSaved" style="margin-top:8px;">Saved overrides</label>
+      <select id="npcOverrideSaved" size="4" style="height:auto;"></select>
+      <div class="row" style="margin-top:4px;">
+        <button id="npcOverrideLoadSaved" type="button" style="flex:1;">Load saved</button>
+        <button id="npcOverrideDeleteSaved" type="button" style="flex:1;">Delete</button>
+      </div>
+      <div id="npcOverrideStatus" class="hint" style="margin-top:6px;"></div>
+    </details>
   </div>
   <div id="creatorPanel" style="display:none;">
     <hr style="border:none;border-top:1px solid #3a342b;margin:12px 0;" />
@@ -196,7 +381,7 @@
   <div id="worldPanel" style="display:none;">
     <hr style="border:none;border-top:1px solid #3a342b;margin:12px 0;" />
     <h1 style="margin-top:0;">World editor</h1>
-    <div id="worldStatus" class="hint">Left-click a tile to walk. Pick a mode below to edit.</div>
+    <div id="worldStatus" class="hint">Left-click to walk. Middle-drag orbit, right-drag pan, scroll zoom.</div>
 
     <label>Tools</label>
     <div class="row">
@@ -211,6 +396,9 @@
     <div class="row" style="margin-top:6px;">
       <button id="runBtn" style="flex:1;">Run: off</button>
       <button id="camLockBtn" style="flex:1;">Camera: free</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="noClipWalkBtn" style="flex:1;font-weight:bold;" title="Ignore blocked tiles (317 collision) for terrain height testing">Noclip walk: on</button>
     </div>
 
     <details id="placeSection" open>
@@ -288,6 +476,23 @@
 
     <details id="mapSection">
       <summary>Save / load map</summary>
+      <label style="margin-top:6px;">Cache region (377 terrain) — default Edgeville</label>
+      <div class="row" style="margin-top:4px;">
+        <input id="regionXEl" type="number" value="48" min="0" max="255" title="Region X (Edgeville = 48)" style="width:64px;" />
+        <input id="regionYEl" type="number" value="54" min="0" max="255" title="Region Y (Edgeville = 54)" style="width:64px;" />
+        <button id="loadRegionBtn" style="flex:1;">Load region</button>
+      </div>
+      <div class="row" style="margin-top:4px;">
+        <label for="drawDistTiles" style="margin:0;white-space:nowrap;">Draw dist</label>
+        <select id="drawDistTiles" style="flex:1;" title="Base tile radius (317 = 25). Scales up automatically when you zoom the camera out.">
+          <option value="25">317 (25 tiles)</option>
+          <option value="28" selected>28 tiles</option>
+          <option value="45">45 tiles</option>
+          <option value="90">Extended (90)</option>
+          <option value="0">Full region</option>
+        </select>
+      </div>
+      <button id="resetRegionBtn" type="button" style="width:100%;margin-top:4px;">Reset flat grid</button>
       <div class="row" style="margin-top:6px;">
         <button id="exportMapBtn" style="flex:1;">Export map</button>
         <button id="importMapBtn" style="flex:1;">Import map</button>
@@ -380,6 +585,8 @@ import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 import { createChessWorld } from './chess_world.js';
 import { createRaveWorld } from './rave_world.js';
 import { createNpcCreator } from './npc_creator.js';
+import { applyRsMaterials, applyTerrainMaterials, tuneClipInterp, applyClipInterpolation } from './rs_render.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const statusEl = document.getElementById('status');
 const modelSel = document.getElementById('model');
@@ -428,7 +635,9 @@ let placeKind = 'loc'; // 'loc' | 'npc'
 const spinBtn = document.getElementById('spin');
 const wireBtn = document.getElementById('wire');
 const animBtn = document.getElementById('anim');
-const smoothEl = document.getElementById('smooth');
+const shadingModeEl = document.getElementById('shadingMode');
+const animTweenEl = document.getElementById('animTween');
+const msaaSamplesEl = document.getElementById('msaaSamples');
 const soundSearchEl = document.getElementById('soundSearch');
 const soundIdEl = document.getElementById('soundId');
 const soundListEl = document.getElementById('soundList');
@@ -459,9 +668,96 @@ async function assertCacheWav(res, blob) {
 }
 
 const app = document.getElementById('app');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+let msaaSamplesRequested = 1;
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: false });
+let msaaSamples = 1;
+let msaaHardwareMax = 1;
+let msaaTarget = null;
+let blitScene = null;
+let blitCamera = null;
+let blitMaterial = null;
+
+function queryMsaaHardwareMax() {
+  return Math.max(1, renderer.capabilities.maxSamples || 1);
+}
+
+/** Keep the MSAA dropdown aligned with what WebGL can actually allocate. */
+function syncMsaaUi() {
+  msaaHardwareMax = queryMsaaHardwareMax();
+  if (!msaaSamplesEl) return;
+  for (const opt of msaaSamplesEl.options) {
+    const v = parseInt(opt.value, 10) || 1;
+    const over = v > msaaHardwareMax;
+    opt.disabled = over;
+    opt.title = over ? `GPU max ${msaaHardwareMax}× MSAA` : '';
+  }
+  msaaSamplesEl.value = String(msaaSamples);
+}
+
+function initMsaaTarget() {
+  msaaHardwareMax = queryMsaaHardwareMax();
+  msaaSamples = Math.min(msaaSamplesRequested, msaaHardwareMax);
+  const dpr = renderer.getPixelRatio();
+  const w = Math.max(1, Math.floor(window.innerWidth * dpr));
+  const h = Math.max(1, Math.floor(window.innerHeight * dpr));
+  if (msaaTarget) msaaTarget.dispose();
+  msaaTarget = new THREE.WebGLRenderTarget(w, h, {
+    samples: msaaSamples,
+    depthBuffer: true,
+  });
+  msaaTarget.texture.colorSpace = renderer.outputColorSpace;
+  if (!blitScene) {
+    blitScene = new THREE.Scene();
+    blitCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    blitMaterial = new THREE.MeshBasicMaterial({ map: msaaTarget.texture, toneMapped: false });
+    blitScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMaterial));
+  } else {
+    blitMaterial.map = msaaTarget.texture;
+    blitMaterial.needsUpdate = true;
+  }
+  syncMsaaUi();
+}
+
+function setMsaaSamples(requested) {
+  msaaHardwareMax = queryMsaaHardwareMax();
+  msaaSamplesRequested = Math.max(1, Math.min(requested | 0, msaaHardwareMax));
+  if (msaaTarget) {
+    msaaTarget.dispose();
+    msaaTarget = null;
+  }
+  initMsaaTarget();
+}
+
+function syncMsaaTarget() {
+  const dpr = renderer.getPixelRatio();
+  const w = Math.max(1, Math.floor(window.innerWidth * dpr));
+  const h = Math.max(1, Math.floor(window.innerHeight * dpr));
+  if (!msaaTarget || msaaTarget.width !== w || msaaTarget.height !== h) initMsaaTarget();
+}
+
+function renderView() {
+  syncMsaaTarget();
+  if (msaaSamples > 1 && msaaTarget) {
+    renderer.setRenderTarget(msaaTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(blitScene, blitCamera);
+  } else {
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+  }
+}
+const MAX_WORLD_PIXEL_RATIO = 1.0;
+function syncRendererPixelRatio() {
+  const cap = (typeof worldActive !== 'undefined' && worldActive)
+    ? MAX_WORLD_PIXEL_RATIO
+    : window.devicePixelRatio;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
+  syncMsaaTarget();
+}
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+initMsaaTarget();
 app.appendChild(renderer.domElement);
 
 const cssScene = new THREE.Scene();
@@ -533,6 +829,105 @@ camera.position.set(300, 300, 300);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.rotateSpeed = 0.55;
+controls.panSpeed = 0.75;
+controls.zoomSpeed = 0.85;
+
+const DEFAULT_MOUSE_BUTTONS = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.PAN,
+};
+const WORLD_MOUSE_BUTTONS = {
+  LEFT: null,
+  MIDDLE: THREE.MOUSE.ROTATE,
+  RIGHT: THREE.MOUSE.PAN,
+};
+const INSPECT_POLAR = { min: 0, max: Math.PI };
+const WORLD_POLAR = { min: Math.PI * 0.12, max: Math.PI * 0.47 };
+
+function applyInspectCameraControls() {
+  controls.mouseButtons = { ...DEFAULT_MOUSE_BUTTONS };
+  controls.minPolarAngle = INSPECT_POLAR.min;
+  controls.maxPolarAngle = INSPECT_POLAR.max;
+}
+
+function applyWorldCameraControls() {
+  controls.mouseButtons = { ...WORLD_MOUSE_BUTTONS };
+  controls.minPolarAngle = WORLD_POLAR.min;
+  controls.maxPolarAngle = WORLD_POLAR.max;
+}
+
+function enforceWorldCameraLimits() {
+  if (!worldActive) return;
+  const tx = clampTile(Math.floor(sceneXToRs(controls.target.x) / TILE));
+  const tz = clampTile(Math.floor(sceneZToRs(controls.target.z) / TILE));
+  const groundY = sampleTileSurfaceY(tx, tz);
+  const minTargetY = groundY + 12;
+  if (controls.target.y < minTargetY) controls.target.y = minTargetY;
+  const minCamY = groundY + 48;
+  if (camera.position.y < minCamY) camera.position.y = minCamY;
+}
+
+// 317 client: arrow keys orbit the camera (yaw/pitch), applied each cycle while held.
+const CAM_ROT_STEP317 = 14; // PathingEntity-style units per 20ms client cycle
+const _camOrbitOffset = new THREE.Vector3();
+const _camOrbitSph = new THREE.Spherical();
+const _arrowKeysHeld = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+
+function isArrowCameraBlocked() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function update317ArrowCamera(dt) {
+  if (!controls.enabled || isArrowCameraBlocked()) return;
+  let dyaw = 0;
+  let dpitch = 0;
+  if (_arrowKeysHeld.ArrowLeft) dyaw += CAM_ROT_STEP317;
+  if (_arrowKeysHeld.ArrowRight) dyaw -= CAM_ROT_STEP317;
+  if (_arrowKeysHeld.ArrowUp) dpitch += CAM_ROT_STEP317;
+  if (_arrowKeysHeld.ArrowDown) dpitch -= CAM_ROT_STEP317;
+  if (!dyaw && !dpitch) return;
+
+  const cycleScale = dt / (CYCLE_MS / 1000);
+  const yawRad = (dyaw / RS_YAW_SCALE) * cycleScale;
+  const pitchRad = (dpitch / RS_YAW_SCALE) * cycleScale;
+
+  _camOrbitOffset.copy(camera.position).sub(controls.target);
+  _camOrbitSph.setFromVector3(_camOrbitOffset);
+  _camOrbitSph.theta -= yawRad;
+  _camOrbitSph.phi = THREE.MathUtils.clamp(
+    _camOrbitSph.phi - pitchRad,
+    controls.minPolarAngle,
+    controls.maxPolarAngle,
+  );
+  _camOrbitSph.makeSafe();
+  _camOrbitOffset.setFromSpherical(_camOrbitSph);
+  camera.position.copy(controls.target).add(_camOrbitOffset);
+}
+
+function clearArrowCameraKeys() {
+  for (const k of Object.keys(_arrowKeysHeld)) _arrowKeysHeld[k] = false;
+}
+
+window.addEventListener('keydown', e => {
+  if (!(e.code in _arrowKeysHeld) || isArrowCameraBlocked()) return;
+  if (_arrowKeysHeld[e.code]) return;
+  _arrowKeysHeld[e.code] = true;
+  e.preventDefault();
+}, true);
+
+window.addEventListener('keyup', e => {
+  if (e.code in _arrowKeysHeld) _arrowKeysHeld[e.code] = false;
+});
+
+window.addEventListener('blur', clearArrowCameraKeys);
+
+applyInspectCameraControls();
 
 // Neutral, even lighting. A coloured/over-bright rig tints the near-black
 // vertex colours (e.g. the King Black Dragon body, RS HSL 11140) toward olive;
@@ -559,9 +954,10 @@ let current = null;
 let mixer = null;
 let spinning = true;
 let wireframe = false;
-let smoothShading = true;
+let shadingMode = 'smooth317';
+let animTweening = true;
 let animating = true;
-window.__rs = { get current() { return current; }, get mixer() { return mixer; }, THREE, camera, controls, render: () => renderer.render(scene, camera) };
+window.__rs = { get current() { return current; }, get mixer() { return mixer; }, THREE, camera, controls, render: () => renderView() };
 
 function clearCurrent() {
   if (mixer) { mixer.stopAllAction(); mixer = null; }
@@ -587,101 +983,39 @@ function countTris(obj) {
   return n;
 }
 
-function geometryHasVertexAlpha(geometry) {
-  const col = geometry?.attributes?.color;
-  if (!col || col.itemSize < 4) return false;
-  const arr = col.array;
-  for (let i = 3; i < arr.length; i += col.itemSize) {
-    if (arr[i] < 0.98) return true;
-  }
-  return false;
-}
-
-function rsMaterialFlags(name, geometry) {
-  const pMatch = /_p(\d+)/.exec(name || '');
-  const aMatch = /_a(\d+)/.exec(name || '');
-  const priority = pMatch ? parseInt(pMatch[1], 10) : 0;
-  const transparent = aMatch !== null || geometryHasVertexAlpha(geometry);
-  return { priority, transparent };
-}
-
-function enableMorphMaterials(mesh) {
-  const hasMorph = mesh.morphTargetInfluences && mesh.morphTargetInfluences.length > 0;
-  if (!hasMorph) return;
-  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  for (const m of mats) {
-    if (!m) continue;
-    m.morphTargets = true;
-    m.needsUpdate = true;
-  }
-}
-
-function applyWire(obj) {
-  obj.traverse(o => {
-    if (!o.isMesh) return;
-    enableMorphMaterials(o);
-    let mats = Array.isArray(o.material) ? o.material.slice() : [o.material];
-    let changed = false;
-    for (let i = 0; i < mats.length; i++) {
-      let m = mats[i];
-      const { priority, transparent } = rsMaterialFlags(m.name, o.geometry);
-      if (transparent && (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) {
-        // PBR ignores vertex alpha on COLOR_0; RS uses flat blended vertex colours.
-        m = new THREE.MeshBasicMaterial({
-          map: m.map,
-          vertexColors: true,
-          transparent: true,
-          depthWrite: false,
-          depthTest: true,
-          side: THREE.DoubleSide,
-          wireframe,
-          morphTargets: !!(o.morphTargetInfluences && o.morphTargetInfluences.length),
-        });
-        mats[i] = m;
-        changed = true;
-      } else {
-        m.wireframe = wireframe;
-        m.flatShading = !smoothShading;
-        m.vertexColors = true;
-        m.depthTest = true;
-        if (transparent) {
-          m.transparent = true;
-          m.depthWrite = false;
-          m.side = THREE.DoubleSide;
-          m.polygonOffset = false;
-          o.renderOrder = 1000 + priority;
-        } else {
-          m.transparent = false;
-          m.depthWrite = true;
-          m.side = THREE.FrontSide;
-          o.renderOrder = priority;
-          if (priority > 0) {
-            m.polygonOffset = true;
-            m.polygonOffsetFactor = 0;
-            m.polygonOffsetUnits = -priority * 0.12;
-          } else {
-            m.polygonOffset = false;
-          }
-        }
-        m.needsUpdate = true;
-      }
-      if (transparent && m.isMeshBasicMaterial) {
-        o.renderOrder = 1000 + priority;
-      }
-    }
-    if (changed) o.material = Array.isArray(o.material) ? mats : mats[0];
+function applyWire(obj, opts = {}) {
+  const prelit317 = shadingMode === 'flat317' || shadingMode === 'smooth317';
+  applyRsMaterials(obj, {
+    wireframe,
+    shadingMode,
+    three: THREE,
+    prelit: prelit317 && !!opts.prelit,
   });
 }
 
-// Smooth interpolation between RS keyframes, but NEVER on scale tracks: cubic
-// smoothing overshoots and momentarily balloons body parts. Scale stays linear,
-// and quaternion stays on the default slerp (three.js ignores smooth there).
-function tuneClipInterp(clip) {
-  for (const track of clip.tracks) {
-    if (track.name.endsWith('.scale') || track.name.endsWith('.quaternion')) continue;
-    track.setInterpolation(THREE.InterpolateSmooth);
-  }
+function applyWorldMaterials() {
+  if (regionMesh) applyTerrainMaterials(regionMesh, { wireframe, shadingMode, three: THREE });
+  for (const root of regionScenery) applyWire(root);
+  for (const obj of placedObjects) applyWire(obj);
+  if (player) applyWire(player);
 }
+
+function retuneAllClips() {
+  const retuneMixer = (mx) => {
+    if (!mx?._actions) return;
+    for (const action of mx._actions) {
+      if (action._clip) applyClipInterpolation(action._clip, { tweening: animTweening, three: THREE });
+    }
+  };
+  retuneMixer(playerMixer);
+  retuneMixer(mixer);
+  for (const d of dummies) retuneMixer(d.mixer);
+  for (const m of placedMixers) retuneMixer(m);
+  for (const p of projectiles) retuneMixer(p.mixer);
+  for (const t of transients) retuneMixer(t.mixer);
+}
+
+const tuneClip = (clip) => tuneClipInterp(clip, THREE, animTweening);
 
 function onLoaded(gltf, label, meta) {
   clearCurrent();
@@ -693,7 +1027,7 @@ function onLoaded(gltf, label, meta) {
   if (gltf.animations && gltf.animations.length) {
     mixer = new THREE.AnimationMixer(current);
     const clip = gltf.animations[0];
-    tuneClipInterp(clip);
+    tuneClip(clip);
     const action = mixer.clipAction(clip);
     if (viewMode === 'gfx') {
       action.setLoop(THREE.LoopOnce, 1);
@@ -798,6 +1132,637 @@ const crNpcAddModel = document.getElementById('crNpcAddModel');
 const crNpcAddModelBtn = document.getElementById('crNpcAddModelBtn');
 const crNpcRecolors = document.getElementById('crNpcRecolors');
 const crNpcPreview = document.getElementById('crNpcPreview');
+const npcOverridePanel = document.getElementById('npcOverridePanel');
+const npcOverrideJson = document.getElementById('npcOverrideJson');
+const npcOverrideName = document.getElementById('npcOverrideName');
+const npcOverrideSaved = document.getElementById('npcOverrideSaved');
+const npcOverrideStatus = document.getElementById('npcOverrideStatus');
+const npcOverrideRecolors = document.getElementById('npcOverrideRecolors');
+const npcOverridePalettePop = document.getElementById('npcOverridePalettePop');
+const npcOverridePaletteGrid = document.getElementById('npcOverridePaletteGrid');
+const npcOverridePaletteLight = document.getElementById('npcOverridePaletteLight');
+const npcOverridePaletteTarget = document.getElementById('npcOverridePaletteTarget');
+const npcOverrideModels = document.getElementById('npcOverrideModels');
+const npcOverrideAddModel = document.getElementById('npcOverrideAddModel');
+const npcOverrideAddModelBtn = document.getElementById('npcOverrideAddModelBtn');
+const npcOverrideItemSearch = document.getElementById('npcOverrideItemSearch');
+const npcOverrideItemSearchBtn = document.getElementById('npcOverrideItemSearchBtn');
+const npcOverrideItemResults = document.getElementById('npcOverrideItemResults');
+const npcOverrideItemDetail = document.getElementById('npcOverrideItemDetail');
+const npcOverrideItemOpts = document.getElementById('npcOverrideItemOpts');
+const npcOverrideItemGender = document.getElementById('npcOverrideItemGender');
+const npcOverrideItemRecolors = document.getElementById('npcOverrideItemRecolors');
+const npcOverrideItemSlots = document.getElementById('npcOverrideItemSlots');
+let npcOverrideItemHits = [];
+let npcOverrideSelectedItem = null;
+const NPC_OVERRIDE_STORE_KEY = 'rs_npc_overrides_v1';
+const paletteColorCache = new Map();
+let npcOverridePalettePick = null; // { src, onPick }
+let npcOverridePalettePreviewTimer = 0;
+
+function rsHslIndex(hue, sat, light) {
+  return ((hue & 63) * 8 + (sat & 7)) * 128 + (light & 127);
+}
+
+async function ensurePaletteColors(indices) {
+  const missing = indices.filter(i => i >= 0 && !paletteColorCache.has(i));
+  for (let o = 0; o < missing.length; o += 200) {
+    const chunk = missing.slice(o, o + 200);
+    const colors = await fetchHslRgb(chunk);
+    for (const [k, v] of Object.entries(colors)) paletteColorCache.set(parseInt(k, 10), v);
+  }
+}
+
+function mergeRecolorsFromModelParts(spec) {
+  const map = new Map();
+  for (const p of spec.recolors || []) {
+    if (p.src != null && p.dst != null) map.set(p.src, p.dst);
+  }
+  for (const part of spec.modelParts || []) {
+    for (const slot of part.slots || []) {
+      if (slot.src != null && slot.dst != null) map.set(slot.src, slot.dst);
+    }
+  }
+  spec.recolors = [...map.entries()].map(([src, dst]) => ({ src, dst }));
+}
+
+async function fetchModelPartDetail(modelId, spec) {
+  const pairs = npcCreator.recolorsFromSpec(spec);
+  const rec = pairs.length
+    ? `&recolor=${pairs.map(p => `${p.src}:${p.dst}`).join(',')}`
+    : '';
+  try {
+    const r = await fetch(`/api/model/${modelId}/slots.json?t=${Date.now()}${rec}`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (_) {
+    return null;
+  }
+}
+
+async function ensureModelPartSlots(spec) {
+  if (!spec.models?.length) return false;
+  if (!spec.modelParts) spec.modelParts = [];
+  const byId = new Map(spec.modelParts.map(p => [p.id, p]));
+  let changed = false;
+  for (const mid of spec.models) {
+    let part = byId.get(mid);
+    if (!part) {
+      part = { id: mid, missing: false, slots: [] };
+      spec.modelParts.push(part);
+      byId.set(mid, part);
+      changed = true;
+    }
+    if (part.missing || (part.slots && part.slots.length)) continue;
+    const detail = await fetchModelPartDetail(mid, spec);
+    if (detail) {
+      Object.assign(part, detail);
+      changed = true;
+    }
+  }
+  if (changed) mergeRecolorsFromModelParts(spec);
+  return changed;
+}
+
+function writeNpcOverrideSpec(spec) {
+  if (!npcOverrideJson) return;
+  npcOverrideJson.value = JSON.stringify(spec, null, 2);
+  renderNpcOverrideModelsUi();
+  renderNpcOverridePaletteUi();
+}
+
+function modelPreviewUrlForSpec(spec, modelId) {
+  const pairs = npcCreator.recolorsFromSpec(spec);
+  const params = [`t=${Date.now()}`];
+  if (pairs.length) params.unshift(`recolor=${pairs.map(p => `${p.src}:${p.dst}`).join(',')}`);
+  return `/api/model/${modelId}.glb?${params.join('&')}`;
+}
+
+function scheduleNpcOverridePreview() {
+  clearTimeout(npcOverridePalettePreviewTimer);
+  npcOverridePalettePreviewTimer = setTimeout(() => {
+    applyNpcOverrideFromJson(false).catch(e => {
+      if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+    });
+  }, 350);
+}
+
+function removeNpcOverrideModel(modelId) {
+  let spec;
+  try { spec = parseNpcOverrideJsonText(); } catch (_) { return; }
+  spec.models = (spec.models || []).filter(id => id !== modelId);
+  if (spec.modelParts) spec.modelParts = spec.modelParts.filter(p => p.id !== modelId);
+  mergeRecolorsFromModelParts(spec);
+  writeNpcOverrideSpec(spec);
+  applyNpcOverrideFromJson(false).catch(e => {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+  });
+}
+
+async function addNpcOverrideModel(modelId) {
+  if (modelId < 0) return;
+  let spec;
+  try { spec = parseNpcOverrideJsonText(); } catch (_) { return; }
+  if (!spec.models) spec.models = [];
+  if (spec.models.includes(modelId)) {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = `Model #${modelId} is already in the list.`;
+    return;
+  }
+  if (npcOverrideStatus) npcOverrideStatus.textContent = `Loading colour slots for model #${modelId}…`;
+  spec.models.push(modelId);
+  const detail = await fetchModelPartDetail(modelId, spec);
+  if (!spec.modelParts) spec.modelParts = [];
+  spec.modelParts.push(detail || { id: modelId, missing: true, slots: [] });
+  mergeRecolorsFromModelParts(spec);
+  writeNpcOverrideSpec(spec);
+  const n = (detail?.slots || []).length;
+  if (npcOverrideStatus) {
+    npcOverrideStatus.textContent = n
+      ? `Added model #${modelId} (${n} recolour slot${n === 1 ? '' : 's'}). Apply & preview to see it.`
+      : `Added model #${modelId} (no palette slots — textured-only?).`;
+  }
+  applyNpcOverrideFromJson(false).catch(e => {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+  });
+}
+
+function mergeItemRecolorsIntoSpec(spec, item) {
+  if (!npcOverrideItemRecolors?.checked || !item?.recolors?.length) return;
+  const map = new Map((spec.recolors || []).map(p => [p.src, p.dst]));
+  for (const p of item.recolors) {
+    if (p.src != null && p.dst != null) map.set(p.src, p.dst);
+  }
+  spec.recolors = [...map.entries()].map(([src, dst]) => ({ src, dst }));
+}
+
+async function applyNpcOverrideItemSlots(slotNames) {
+  if (!npcOverrideSelectedItem) return;
+  let spec;
+  try { spec = parseNpcOverrideJsonText(); } catch (e) {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+    return;
+  }
+  const gender = npcOverrideItemGender?.value || 'male';
+  const worn = npcOverrideSelectedItem.worn?.[gender] || {};
+  const labels = { body: 'body', arms: 'arms', extra: 'extra' };
+  const added = [];
+  for (const slot of slotNames) {
+    const mid = worn[slot];
+    if (mid == null || mid <= 0) continue;
+    if (!spec.models) spec.models = [];
+    if (spec.models.includes(mid)) continue;
+    spec.models.push(mid);
+    const detail = await fetchModelPartDetail(mid, spec);
+    if (!spec.modelParts) spec.modelParts = [];
+    spec.modelParts.push(detail || { id: mid, missing: true, slots: [] });
+    added.push(`${labels[slot] || slot} #${mid}`);
+  }
+  mergeItemRecolorsIntoSpec(spec, npcOverrideSelectedItem);
+  mergeRecolorsFromModelParts(spec);
+  writeNpcOverrideSpec(spec);
+  if (!added.length) {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = 'No new models to add (already equipped or slot empty).';
+    return;
+  }
+  if (npcOverrideStatus) {
+    npcOverrideStatus.textContent = `Equipped ${npcOverrideSelectedItem.name}: ${added.join(', ')}. Recolour below or Apply & preview.`;
+  }
+  applyNpcOverrideFromJson(false).catch(e => {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+  });
+}
+
+function renderNpcOverrideItemDetail(item) {
+  npcOverrideSelectedItem = item;
+  if (!item) {
+    if (npcOverrideItemDetail) npcOverrideItemDetail.style.display = 'none';
+    if (npcOverrideItemOpts) npcOverrideItemOpts.style.display = 'none';
+    if (npcOverrideItemSlots) npcOverrideItemSlots.innerHTML = '';
+    return;
+  }
+  const rec = item.recolors?.length ? `${item.recolors.length} default recolor${item.recolors.length === 1 ? '' : 's'}` : 'no default recolors';
+  if (npcOverrideItemDetail) {
+    npcOverrideItemDetail.style.display = '';
+    npcOverrideItemDetail.textContent = `#${item.id} ${item.name} — ground model ${item.modelId || '—'}, ${rec}`;
+  }
+  if (npcOverrideItemOpts) npcOverrideItemOpts.style.display = '';
+  renderNpcOverrideItemSlotButtons();
+}
+
+function renderNpcOverrideItemSlotButtons() {
+  if (!npcOverrideItemSlots || !npcOverrideSelectedItem) return;
+  const gender = npcOverrideItemGender?.value || 'male';
+  const worn = npcOverrideSelectedItem.worn?.[gender] || {};
+  const slotDefs = [
+    ['body', 'Body'],
+    ['arms', 'Arms'],
+    ['extra', 'Extra'],
+  ];
+  npcOverrideItemSlots.innerHTML = '';
+  const any = slotDefs.some(([key]) => worn[key] > 0);
+  if (!any) {
+    npcOverrideItemSlots.innerHTML = '<div class="hint">No worn models for this gender — try the other worn set.</div>';
+    return;
+  }
+  for (const [key, label] of slotDefs) {
+    const mid = worn[key];
+    if (mid == null || mid <= 0) continue;
+    const row = document.createElement('div');
+    row.className = 'row';
+    const info = document.createElement('span');
+    info.style.flex = '1';
+    info.style.fontSize = '11px';
+    info.textContent = `${label}: model #${mid}`;
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'npcItemSlotBtn';
+    addBtn.textContent = 'Add';
+    addBtn.addEventListener('click', () => applyNpcOverrideItemSlots([key]));
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'npcItemSlotBtn';
+    prevBtn.textContent = 'Preview';
+    prevBtn.addEventListener('click', () => {
+      let spec;
+      try { spec = parseNpcOverrideJsonText(); } catch (_) { return; }
+      loadURL(modelPreviewUrlForSpec(spec, mid), `${npcOverrideSelectedItem.name} ${label}`);
+    });
+    row.appendChild(info);
+    row.appendChild(prevBtn);
+    row.appendChild(addBtn);
+    npcOverrideItemSlots.appendChild(row);
+  }
+  const allRow = document.createElement('div');
+  allRow.className = 'row';
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.style.flex = '1';
+  allBtn.textContent = 'Add all worn slots';
+  allBtn.addEventListener('click', () => applyNpcOverrideItemSlots(['body', 'arms', 'extra']));
+  allRow.appendChild(allBtn);
+  npcOverrideItemSlots.appendChild(allRow);
+}
+
+function renderNpcOverrideItemResults() {
+  if (!npcOverrideItemResults) return;
+  npcOverrideItemResults.innerHTML = '';
+  if (!npcOverrideItemHits.length) {
+    npcOverrideItemResults.style.display = 'none';
+    renderNpcOverrideItemDetail(null);
+    return;
+  }
+  npcOverrideItemResults.style.display = '';
+  npcOverrideItemHits.forEach((item, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(item.id);
+    const worn = item.wornModelIds?.length ? ` · worn ${item.wornModelIds.join(',')}` : '';
+    opt.textContent = `#${item.id} ${item.name}${worn}`;
+    if (i === 0) opt.selected = true;
+    npcOverrideItemResults.appendChild(opt);
+  });
+  selectNpcOverrideItemFromResults();
+}
+
+async function searchNpcOverrideItems() {
+  const q = (npcOverrideItemSearch?.value || '').trim();
+  if (!q) {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = 'Enter an item name or id to search.';
+    return;
+  }
+  if (npcOverrideStatus) npcOverrideStatus.textContent = `Searching items for "${q}"…`;
+  try {
+    const r = await fetch(`/api/items/search?q=${encodeURIComponent(q)}&limit=25&t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('search HTTP ' + r.status);
+    const data = await r.json();
+    npcOverrideItemHits = data.items || [];
+    renderNpcOverrideItemResults();
+    if (npcOverrideStatus) {
+      npcOverrideStatus.textContent = npcOverrideItemHits.length
+        ? `Found ${npcOverrideItemHits.length} item(s). Pick one, then Add the slot you want.`
+        : `No items matching "${q}".`;
+    }
+  } catch (e) {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+  }
+}
+
+async function selectNpcOverrideItemFromResults() {
+  const id = parseInt(npcOverrideItemResults?.value, 10);
+  if (!id) {
+    renderNpcOverrideItemDetail(null);
+    return;
+  }
+  const cached = npcOverrideItemHits.find(it => it.id === id);
+  if (cached?.worn) {
+    renderNpcOverrideItemDetail(cached);
+    return;
+  }
+  try {
+    const r = await fetch(`/api/item/${id}.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('item HTTP ' + r.status);
+    renderNpcOverrideItemDetail(await r.json());
+  } catch (e) {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+  }
+}
+
+function renderNpcOverrideModelsUi() {
+  if (!npcOverrideModels) return;
+  let spec;
+  try {
+    spec = parseNpcOverrideJsonText();
+  } catch (_) {
+    npcOverrideModels.textContent = 'Invalid JSON — fix syntax to edit model parts.';
+    return;
+  }
+  const models = spec.models || [];
+  if (!models.length) {
+    npcOverrideModels.innerHTML = '<div class="hint">No models — add a part or load from NPC.</div>';
+    return;
+  }
+  const partById = new Map((spec.modelParts || []).map(p => [p.id, p]));
+  npcOverrideModels.innerHTML = '';
+  models.forEach((mid, i) => {
+    const part = partById.get(mid);
+    const row = document.createElement('div');
+    row.className = 'npcRecolorRow';
+    const lbl = document.createElement('span');
+    lbl.style.flex = '1';
+    const fc = part?.faceCount;
+    lbl.textContent = `#${i + 1} model ${mid}${fc != null ? ` · ${fc}f` : ''}`;
+    const prev = document.createElement('button');
+    prev.type = 'button';
+    prev.textContent = 'view';
+    prev.title = 'Preview this part alone';
+    prev.addEventListener('click', () => {
+      loadURL(modelPreviewUrlForSpec(spec, mid), `model #${mid}`);
+      if (npcOverrideStatus) npcOverrideStatus.textContent = `Previewing model #${mid} — remove from list if not whip/hat/etc.`;
+    });
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.title = 'Remove this part';
+    rm.addEventListener('click', () => removeNpcOverrideModel(mid));
+    row.appendChild(lbl);
+    row.appendChild(prev);
+    row.appendChild(rm);
+    npcOverrideModels.appendChild(row);
+  });
+}
+
+function applyNpcOverrideDst(src, dst, { preview = true } = {}) {
+  let spec;
+  try { spec = parseNpcOverrideJsonText(); } catch (_) { return; }
+  const map = new Map(npcCreator.recolorsFromSpec(spec).map(p => [p.src, p.dst]));
+  map.set(src, dst);
+  spec.recolors = [...map.entries()].map(([s, d]) => ({ src: s, dst: d }));
+  for (const part of spec.modelParts || []) {
+    for (const slot of part.slots || []) {
+      if (slot.src === src) {
+        slot.dst = dst;
+        slot.recolored = dst !== slot.src;
+      }
+    }
+  }
+  writeNpcOverrideSpec(spec);
+  if (preview) scheduleNpcOverridePreview();
+}
+
+async function renderNpcOverridePaletteGrid(lightness) {
+  if (!npcOverridePaletteGrid) return;
+  const light = lightness ?? (parseInt(npcOverridePaletteLight?.value, 10) || 64);
+  const indices = [];
+  for (let hue = 0; hue < 64; hue++) {
+    for (let sat = 0; sat < 8; sat++) indices.push(rsHslIndex(hue, sat, light));
+  }
+  await ensurePaletteColors(indices);
+  npcOverridePaletteGrid.innerHTML = '';
+  const curDst = npcOverridePalettePick?.dst;
+  for (const idx of indices) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = `HSL ${idx}`;
+    btn.style.background = paletteColorCache.get(idx) || '#333';
+    if (idx === curDst) btn.classList.add('sel');
+    btn.addEventListener('click', () => {
+      if (!npcOverridePalettePick) return;
+      applyNpcOverrideDst(npcOverridePalettePick.src, idx);
+      npcOverridePalettePick.dst = idx;
+      renderNpcOverridePaletteGrid(light);
+    });
+    npcOverridePaletteGrid.appendChild(btn);
+  }
+}
+
+function openNpcOverridePalettePicker(src, dst) {
+  if (!npcOverridePalettePop) return;
+  npcOverridePalettePick = { src, dst };
+  if (npcOverridePaletteTarget) {
+    npcOverridePaletteTarget.textContent = `src ${src} → dst`;
+  }
+  if (npcOverridePaletteLight) npcOverridePaletteLight.value = String(dst & 127);
+  npcOverridePalettePop.style.display = '';
+  renderNpcOverridePaletteGrid(dst & 127);
+}
+
+function closeNpcOverridePalettePicker() {
+  npcOverridePalettePick = null;
+  if (npcOverridePalettePop) npcOverridePalettePop.style.display = 'none';
+}
+
+async function renderNpcOverridePaletteUi() {
+  if (!npcOverrideRecolors) return;
+  let spec;
+  try {
+    spec = parseNpcOverrideJsonText();
+  } catch (_) {
+    npcOverrideRecolors.textContent = 'Invalid JSON — fix syntax to edit colours here.';
+    closeNpcOverridePalettePicker();
+    return;
+  }
+  if (await ensureModelPartSlots(spec)) {
+    npcOverrideJson.value = JSON.stringify(spec, null, 2);
+  }
+  const models = spec.models || [];
+  const parts = (spec.modelParts || []).filter(p => models.includes(p.id));
+  const recMap = new Map(npcCreator.recolorsFromSpec(spec).map(p => [p.src, p.dst]));
+  let any = false;
+  npcOverrideRecolors.innerHTML = '';
+  for (const part of parts) {
+    const slots = part.slots || [];
+    if (!slots.length) continue;
+    any = true;
+    const head = document.createElement('div');
+    head.className = 'hint';
+    head.style.marginTop = '8px';
+    head.style.fontWeight = 'bold';
+    head.textContent = `Model #${part.id}${part.faceCount != null ? ` · ${part.faceCount} faces` : ''}`;
+    npcOverrideRecolors.appendChild(head);
+    for (const slot of slots) {
+      const dst = recMap.get(slot.src) ?? slot.dst ?? slot.src;
+      const row = document.createElement('div');
+      row.className = 'npcRecolorRow';
+      const srcSw = swatchEl(slot.srcRgb || paletteColorCache.get(slot.src) || '#444', `src ${slot.src}`);
+      const arrow = document.createElement('span');
+      arrow.textContent = '→';
+      arrow.style.opacity = '0.5';
+      const dstSw = swatchEl(slot.dstRgb || paletteColorCache.get(dst) || '#444', `dst ${dst}`);
+      dstSw.classList.add('pickable');
+      dstSw.addEventListener('click', () => openNpcOverridePalettePicker(slot.src, dst));
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.max = '65535';
+      inp.value = String(dst);
+      inp.title = `HSL index for model #${part.id}`;
+      inp.addEventListener('change', () => {
+        const v = parseInt(inp.value, 10);
+        if (isNaN(v)) return;
+        applyNpcOverrideDst(slot.src, v);
+      });
+      const lbl = document.createElement('span');
+      lbl.style.flex = '1';
+      lbl.style.color = '#9c917d';
+      lbl.textContent = `#${slot.src}`;
+      row.appendChild(lbl);
+      row.appendChild(srcSw);
+      row.appendChild(arrow);
+      row.appendChild(dstSw);
+      row.appendChild(inp);
+      npcOverrideRecolors.appendChild(row);
+    }
+  }
+  if (!any) {
+    npcOverrideRecolors.innerHTML = '<div class="hint">No recolour slots — load an NPC or add a model part with palette faces.</div>';
+    closeNpcOverridePalettePicker();
+    return;
+  }
+  const idx = [...recMap.keys(), ...recMap.values()];
+  await ensurePaletteColors(idx);
+}
+
+function readNpcOverrideStore() {
+  try {
+    return JSON.parse(localStorage.getItem(NPC_OVERRIDE_STORE_KEY) || '{}');
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeNpcOverrideStore(store) {
+  localStorage.setItem(NPC_OVERRIDE_STORE_KEY, JSON.stringify(store));
+}
+
+function renderNpcOverrideSavedList() {
+  if (!npcOverrideSaved) return;
+  const store = readNpcOverrideStore();
+  const names = Object.keys(store).sort((a, b) => a.localeCompare(b));
+  npcOverrideSaved.innerHTML = '';
+  names.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    const base = store[name]?.base;
+    opt.textContent = base != null ? `${name} (base #${base})` : name;
+    npcOverrideSaved.appendChild(opt);
+  });
+}
+
+function selectedNpcIdFromBrowser() {
+  const opt = modelSel?.options?.[modelSel.selectedIndex];
+  if (!opt) return 0;
+  return parseInt(opt.dataset.id, 10) || 0;
+}
+
+async function loadNpcOverrideJsonForId(npcId) {
+  if (!npcId || !npcOverrideJson) return;
+  const npc = npcById[npcId];
+  if (!npc) return;
+  npcOverrideStatus.textContent = `Loading clone data for ${npc.name} (#${npcId})…`;
+  let detail = null;
+  try {
+    const r = await fetch(`/api/npc/${npcId}/clone.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (r.ok) detail = await r.json();
+  } catch (e) {
+    npcOverrideStatus.textContent = 'Failed to load clone.json: ' + e;
+    return;
+  }
+  npcCreator.loadNpcClone(npc, detail);
+  const spec = npcCreator.exportOverride(npc.name || `NPC #${npcId}`);
+  if (detail?.modelParts) spec.modelParts = detail.modelParts;
+  writeNpcOverrideSpec(spec);
+  if (npcOverrideName && !npcOverrideName.value.trim()) {
+    npcOverrideName.value = spec.name || `NPC #${npcId}`;
+  }
+  npcOverrideStatus.textContent = `Loaded ${npc.name} (#${npcId}). Use the palette below or JSON, then Apply & preview.`;
+}
+
+function parseNpcOverrideJsonText() {
+  const raw = (npcOverrideJson?.value || '').trim();
+  if (!raw) throw new Error('JSON is empty');
+  return JSON.parse(raw);
+}
+
+async function applyNpcOverrideFromJson(previewStock = false) {
+  const spec = parseNpcOverrideJsonText();
+  npcCreator.applyOverride(spec);
+  if (npcOverrideName && spec.name) npcOverrideName.value = spec.name;
+  const url = previewStock
+    ? `/api/npc/${spec.base}.glb?t=${Date.now()}`
+    : npcCreator.overrideGlbUrl(spec);
+  if (!url) throw new Error('override URL could not be built (missing base?)');
+  const label = spec.name || `override #${spec.base}`;
+  const parts = (spec.models || []).length;
+  npcOverrideStatus.textContent = `Previewing ${label} (${parts} parts)…`;
+  let meta = {};
+  try {
+    const head = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+    meta.glbBuild = head.headers.get('x-rs-glb-build') || '';
+    meta.modelIds = head.headers.get('x-rs-model-ids') || '';
+  } catch (_) { /* optional */ }
+  await loadURL(url, label);
+  const buildNote = meta.glbBuild === 'npc-custom-v1'
+    ? ' (old server — restart serve_viewer.bat to apply model edits)'
+    : '';
+  const idsNote = meta.modelIds ? ` models: ${meta.modelIds}` : '';
+  npcOverrideStatus.textContent = `Previewing ${label} — ${parts} part(s).${idsNote}${buildNote}`;
+}
+
+function saveNpcOverrideFromUi() {
+  const spec = parseNpcOverrideJsonText();
+  const name = (npcOverrideName?.value || spec.name || `NPC #${spec.base}`).trim();
+  if (!name) throw new Error('Enter a name for this override');
+  spec.name = name;
+  const store = readNpcOverrideStore();
+  store[name] = spec;
+  writeNpcOverrideStore(store);
+  renderNpcOverrideSavedList();
+  npcOverrideSaved.value = name;
+  npcOverrideStatus.textContent = `Saved override "${name}".`;
+}
+
+function loadSavedNpcOverride() {
+  const name = npcOverrideSaved?.value;
+  if (!name) return;
+  const store = readNpcOverrideStore();
+  const spec = store[name];
+  if (!spec) {
+    npcOverrideStatus.textContent = 'Saved override not found.';
+    return;
+  }
+  writeNpcOverrideSpec(spec);
+  if (npcOverrideName) npcOverrideName.value = name;
+  npcOverrideStatus.textContent = `Loaded saved override "${name}".`;
+}
+
+function deleteSavedNpcOverride() {
+  const name = npcOverrideSaved?.value;
+  if (!name) return;
+  const store = readNpcOverrideStore();
+  delete store[name];
+  writeNpcOverrideStore(store);
+  renderNpcOverrideSavedList();
+  npcOverrideStatus.textContent = `Deleted override "${name}".`;
+}
 const crQueenPreset = document.getElementById('crQueenPreset');
 const crPreviewKit = document.getElementById('crPreviewKit');
 const crPreviewFull = document.getElementById('crPreviewFull');
@@ -824,8 +1789,9 @@ function setViewMode(mode) {
     el.style.display = mode === 'creator' ? 'none' : '';
   });
   document.getElementById('rotRow') && (document.getElementById('rotRow').style.display = mode === 'loc' ? '' : 'none');
-  document.querySelector('#browserPanel label[for="smooth"]')?.closest('.row')?.style &&
-    (document.querySelector('#browserPanel label[for="smooth"]').closest('.row').style.display = mode === 'creator' ? 'none' : '');
+  document.querySelector('#browserPanel label[for="shadingMode"]')?.closest('.row')?.style &&
+    (document.querySelector('#browserPanel label[for="shadingMode"]').closest('.row').style.display = mode === 'creator' ? 'none' : '');
+  if (npcOverridePanel) npcOverridePanel.style.display = mode === 'npc' ? '' : 'none';
 
   if (mode === 'world') {
     enterWorld();
@@ -958,16 +1924,19 @@ function onSelectEntry() {
   if (!opt) return;
   if (viewMode === 'loc') {
     const id = parseInt(opt.dataset.id, 10);
-    const meta = locById[id] || {};
-    selectedLoc = {
+    selectedLoc = enrichRegionLoc({
       id,
       rot: parseInt(rotSel.value, 10) || 0,
-      name: meta.name || `loc_${id}`,
-      actions: meta.actions || [],
-      examine: meta.examine || '',
-    };
+      ...(locById[id] || {}),
+    });
   }
   loadURL(opt.value, opt.textContent);
+  if (viewMode === 'npc') {
+    const id = parseInt(opt.dataset.id, 10);
+    if (id) loadNpcOverrideJsonForId(id).catch(e => {
+      if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+    });
+  }
 }
 
 modelSel.addEventListener('change', onSelectEntry);
@@ -983,12 +1952,27 @@ searchEl.addEventListener('keydown', e => {
 });
 document.getElementById('reload').addEventListener('click', loadManifest);
 spinBtn.addEventListener('click', () => { spinning = !spinning; spinBtn.textContent = 'Spin: ' + (spinning ? 'on' : 'off'); });
-wireBtn.addEventListener('click', () => { wireframe = !wireframe; wireBtn.textContent = 'Wire: ' + (wireframe ? 'on' : 'off'); if (current) applyWire(current); });
-animBtn.addEventListener('click', () => { animating = !animating; animBtn.textContent = 'Idle: ' + (animating ? 'on' : 'off'); if (mixer) mixer._actions.forEach(a => { a.paused = !animating; }); });
-smoothEl.addEventListener('change', () => {
-  smoothShading = smoothEl.checked;
+wireBtn.addEventListener('click', () => {
+  wireframe = !wireframe;
+  wireBtn.textContent = 'Wire: ' + (wireframe ? 'on' : 'off');
   if (current) applyWire(current);
+  if (worldActive) applyWorldMaterials();
 });
+animBtn.addEventListener('click', () => { animating = !animating; animBtn.textContent = 'Idle: ' + (animating ? 'on' : 'off'); if (mixer) mixer._actions.forEach(a => { a.paused = !animating; }); });
+shadingModeEl.addEventListener('change', () => {
+  shadingMode = shadingModeEl.value || 'smooth317';
+  if (current) applyWire(current);
+  if (worldActive) applyWorldMaterials();
+});
+animTweenEl.addEventListener('change', () => {
+  animTweening = animTweenEl.checked;
+  retuneAllClips();
+});
+if (msaaSamplesEl) {
+  msaaSamplesEl.addEventListener('change', () => {
+    setMsaaSamples(parseInt(msaaSamplesEl.value, 10) || 1);
+  });
+}
 
 window.addEventListener('dragover', e => { e.preventDefault(); });
 window.addEventListener('drop', e => {
@@ -1001,7 +1985,9 @@ window.addEventListener('drop', e => {
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+  syncRendererPixelRatio();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  syncMsaaTarget();
   cssRenderer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -1033,22 +2019,134 @@ function updateFpsHud(dt) {
   fpsSmoothed = fpsSmoothed ? fpsSmoothed * 0.92 + instant * 0.08 : instant;
   const fps = Math.round(fpsSmoothed);
   const anim = activeAnimFrame();
-  const extra = anim ? ` · <span>frame</span> ${anim.current}/${anim.total}` : '';
+  const extra = (anim ? ` · <span>frame</span> ${anim.current}/${anim.total}` : '')
+    + (msaaSamples > 1 ? ` · <span>MSAA</span> ${msaaSamples}x` : '')
+    + (regionScenery.length && worldDrawDistTiles > 0
+      ? ` · <span>locs</span> ${_sceneryVisibleCount}/${regionScenery.length} (${effectiveDrawDistTiles()}t)` : '');
   fpsEl.innerHTML = `<span>FPS</span> ${fps}${extra}`;
+}
+
+let minimapActive = false;
+const minimapHudEl = document.getElementById('hud-minimap');
+const minimapViewportEl = document.getElementById('minimapViewport');
+const minimapImageEl = document.getElementById('minimapImage');
+const minimapCompassEl = document.getElementById('minimapCompass');
+const minimapDotEl = document.getElementById('minimapDot');
+const MINIMAP_CLIP_RADIUS = 73;
+
+function minimapCameraDeg() {
+  return (orbitCameraYaw317() / 2048) * 360;
+}
+
+/** 317 drawMinimap: map + compass both rotate by orbitCameraYaw (no extra offset). */
+function minimapHudRotationDeg() {
+  return minimapCameraDeg();
+}
+
+/** Map a click on the rotating minimap to a region tile (317-style). */
+function tileFromMinimapClick(clientX, clientY) {
+  if (!minimapActive || !worldActive || !minimapViewportEl) return null;
+  const rect = minimapViewportEl.getBoundingClientRect();
+  const cx = clientX - rect.left;
+  const cy = clientY - rect.top;
+  const vw = rect.width;
+  const vh = rect.height;
+  if (vw <= 0 || vh <= 0) return null;
+  const hx = vw * 0.5;
+  const hy = vh * 0.5;
+  const px = cx - hx;
+  const py = cy - hy;
+  const radius = MINIMAP_CLIP_RADIUS * (vw / 146);
+  if (px * px + py * py > radius * radius) return null;
+
+  const rad = -minimapCameraDeg() * Math.PI / 180;
+  const rx = px * Math.cos(rad) - py * Math.sin(rad);
+  const ry = px * Math.sin(rad) + py * Math.cos(rad);
+  const normX = (rx + hx) / vw;
+  const normY = (ry + hy) / vh;
+  const tx = clampTile(Math.floor(normX * activeGrid));
+  const tz = clampTile(Math.floor((1 - normY) * activeGrid));
+  const center = tileCenterRs(tx, tz);
+  return { x: tx, z: tz, rsX: center.x, rsZ: center.z };
+}
+
+function onMinimapClick(e) {
+  if (!minimapActive || !worldActive || placeMode || paintMode || deleteMode) return;
+  const t = tileFromMinimapClick(e.clientX, e.clientY);
+  if (!t) return;
+  e.preventDefault();
+  e.stopPropagation();
+  startWalkTo(t.x, t.z, { x: t.rsX, z: t.rsZ });
+  worldStatusEl.textContent = `Walking to (${t.x}, ${t.z}).`;
+}
+
+if (minimapViewportEl) {
+  minimapViewportEl.addEventListener('click', onMinimapClick);
+}
+
+function orbitCameraYaw317() {
+  const dx = camera.position.x - controls.target.x;
+  const dz = camera.position.z - controls.target.z;
+  if (Math.abs(dx) < 1e-3 && Math.abs(dz) < 1e-3) return playerYaw317;
+  let a = Math.atan2(dx, -dz);
+  if (a < 0) a += Math.PI * 2;
+  return Math.round((a / (Math.PI * 2)) * 2048) & 2047;
+}
+
+async function loadRegionMinimap(rx, ry) {
+  if (!minimapHudEl || !minimapImageEl) return;
+  try {
+    minimapImageEl.src = `/api/region/${rx}/${ry}/minimap.png?t=${Date.now()}`;
+    await minimapImageEl.decode();
+    minimapHudEl.hidden = false;
+    minimapActive = true;
+  } catch (e) {
+    minimapHudEl.hidden = true;
+    minimapActive = false;
+  }
+}
+
+function hideRegionMinimap() {
+  minimapActive = false;
+  if (minimapHudEl) minimapHudEl.hidden = true;
+  if (minimapImageEl) minimapImageEl.removeAttribute('src');
+}
+
+function updateMinimapHud() {
+  if (!minimapActive || !worldActive) return;
+  const deg = minimapHudRotationDeg();
+  if (minimapImageEl) {
+    minimapImageEl.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+  }
+  if (minimapCompassEl) {
+    minimapCompassEl.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+  }
+  if (minimapDotEl && player) {
+    const rsX = sceneXToRs(player.position.x);
+    const rsZ = sceneZToRs(player.position.z);
+    const tx = rsX / TILE;
+    const tz = rsZ / TILE;
+    minimapDotEl.style.left = `${(tx / activeGrid) * 100}%`;
+    minimapDotEl.style.top = `${(1 - tz / activeGrid) * 100}%`;
+    minimapDotEl.style.transform = `translate(-50%, -50%) rotate(${-deg}deg)`;
+  }
 }
 
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
   updateFpsHud(dt);
+  updateMinimapHud();
   if (worldActive) {
     updateWorld(dt);
   } else {
     if (mixer && animating) mixer.update(dt);
     if (spinning && current) current.rotation.y += 0.01;
   }
+  update317ArrowCamera(dt);
   controls.update();
-  renderer.render(scene, camera);
+  if (worldActive) enforceWorldCameraLimits();
+  renderView();
   cssRenderer.render(cssScene, camera);
 }
 function renderSoundOptions(filter) {
@@ -1183,6 +2281,75 @@ soundSearchEl.addEventListener('keydown', e => {
 const GRID = 30;            // tiles per side (4x the original 15x15 area)
 const TILE = 128;           // RS units per tile (matches model scale)
 const HALF = GRID * TILE / 2;
+let activeGrid = GRID;        // 64 when a cache region is loaded
+let activeHalf = HALF;
+let regionTerrain = null;     // /api/region/{rx}/{ry}.json payload
+let regionMesh = null;        // terrain GLB root
+let regionFrame = null;       // shared RS→scene mirror for terrain + scenery
+let regionMeshMatrixReady = false;
+
+/** Parent group: X mirror for terrain GLB (RS grid → Three.js scene). Region locs share this frame. */
+function ensureRegionFrame() {
+  if (!regionFrame) {
+    regionFrame = new THREE.Group();
+    regionFrame.name = 'regionFrame';
+    worldGroup.add(regionFrame);
+  }
+  return regionFrame;
+}
+
+function syncRegionFrame() {
+  const frame = ensureRegionFrame();
+  frame.scale.set(-1, 1, 1);
+  frame.position.set(activeHalf, 0, -activeHalf);
+  frame.matrixAutoUpdate = false;
+  frame.updateMatrix();
+  frame.updateMatrixWorld(true);
+  regionMeshMatrixReady = true;
+}
+
+function syncTerrainMeshFrame() {
+  if (!regionMesh) return;
+  syncRegionFrame();
+  if (regionMesh.parent !== regionFrame) {
+    regionFrame.add(regionMesh);
+  }
+  regionMesh.scale.set(1, 1, 1);
+  regionMesh.position.set(0, 0, 0);
+  regionMesh.rotation.set(0, 0, 0);
+  regionMesh.matrixAutoUpdate = true;
+  regionMesh.frustumCulled = true;
+  regionMesh.updateMatrixWorld(true);
+}
+
+function disposeRegionFrame() {
+  regionFrame = null;
+  regionMeshMatrixReady = false;
+}
+
+function applyRegionSceneryMaterials(obj) {
+  applyWire(obj);
+}
+
+let regionScenery = [];       // auto-placed cache landscape locs
+let regionLocCatalog = [];     // interactable loc metadata from objects.json
+let regionLocPickProxies = []; // world-space AABBs for screen picking (317-style)
+const _pickBox = new THREE.Box3();
+const _pickV = new THREE.Vector3();
+const _pickRay = new THREE.Raycaster();
+const _pickBoxPad = new THREE.Box3();
+let regionSceneryToken = 0;   // cancel stale scenery loads
+/** 317 Scene.draw: 25 tiles (90 on GPU plugin). 0 = show entire loaded region. */
+let worldDrawDistTiles = 28;
+/** Orbit distance at default world camera — draw range scales up when zoomed out beyond this. */
+const SCENERY_ZOOM_REF_DIST = 1100;
+let _sceneryEyeTile = { x: -999, z: -999 };
+let _sceneryCullRsX = NaN;
+let _sceneryCullRsZ = NaN;
+let _sceneryCullCamDist = NaN;
+let _sceneryCullLimTiles = -1;
+let _sceneryVisibleCount = 0;
+const SCENERY_CULL_MOVE = TILE * 0.5;
 const WALK_TIME = 0.6;      // one game tick: walking covers exactly 1 tile per tick
 const RUN_TIME = 0.3;       // running covers 2 tiles per tick -> half a tick per tile
                             // (Elvarg MovementQueue.process polls 2 queue points when running)
@@ -1191,6 +2358,7 @@ const worldStatusEl = document.getElementById('worldStatus');
 const combatStatusEl = document.getElementById('combatStatus');
 const placeBtn = document.getElementById('placeBtn');
 const runBtn = document.getElementById('runBtn');
+const noClipWalkBtn = document.getElementById('noClipWalkBtn');
 const clearPlacedBtn = document.getElementById('clearPlaced');
 const camLockBtn = document.getElementById('camLockBtn');
 const undoBtn = document.getElementById('undoBtn');
@@ -1216,6 +2384,11 @@ const worldNpcListEl = document.getElementById('worldNpcList');
 const worldNpcRotEl = document.getElementById('worldNpcRot');
 const worldNpcSelEl = document.getElementById('worldNpcSel');
 const exportMapBtn = document.getElementById('exportMapBtn');
+const regionXEl = document.getElementById('regionXEl');
+const regionYEl = document.getElementById('regionYEl');
+const loadRegionBtn = document.getElementById('loadRegionBtn');
+const drawDistTilesEl = document.getElementById('drawDistTiles');
+const resetRegionBtn = document.getElementById('resetRegionBtn');
 const importMapBtn = document.getElementById('importMapBtn');
 const importMapFileEl = document.getElementById('importMapFile');
 const addDummyBtn = document.getElementById('addDummy');
@@ -1260,13 +2433,430 @@ const MOVE_STEP = 4;       // sub-tile units per cycle at walk pace (317 moveSpe
 let placeMode = false;
 let paintMode = false;
 let deleteMode = false;
-let cameraLock = false;
+let cameraLock = true;
 let selectedTexId = null;
 let running = false;
+/** When true, ignore map blocked flags and walk in a straight line (terrain height testing). */
+let noClipWalk = true;
 let placedObjects = [];
 let placedMixers = []; // animation mixers for placed scenery (e.g. animated fire)
 let idkData = null;
-let playerLoadToken = 0;
+const _terrainRay = new THREE.Raycaster();
+const _terrainRayOrigin = new THREE.Vector3(0, 5000, 0);
+const _terrainRayDir = new THREE.Vector3(0, -1, 0);
+
+function sampleTerrainMeshY(worldX, worldZ) {
+  if (!regionMesh) return null;
+  if (!regionMeshMatrixReady) regionMesh.updateMatrixWorld(true);
+  _terrainRayOrigin.x = worldX;
+  _terrainRayOrigin.z = worldZ;
+  _terrainRay.set(_terrainRayOrigin, _terrainRayDir);
+  const hits = _terrainRay.intersectObject(regionMesh, true);
+  return hits.length ? hits[0].point.y : null;
+}
+
+function heightmapSceneYAtRs(rsX, rsZ, plane = 0) {
+  const tx = Math.floor(rsX / TILE);
+  const tz = Math.floor(rsZ / TILE);
+  const u = (rsX / TILE) - tx;
+  const v = (rsZ / TILE) - tz;
+  return sampleTileSurfaceY(tx, tz, u, v, plane);
+}
+
+function cornerHeightsGrid(plane = 0) {
+  const planes = regionTerrain?.heights;
+  return Array.isArray(planes?.[0]?.[0]) ? planes[plane] : planes;
+}
+
+/** 317 heightmapAverage: mean of the four corner heights on the SW tile. */
+function tileHeightAverage(tx, tz, plane = 0) {
+  const h = cornerHeightsGrid(plane);
+  if (!h || !h[0]) return -0.5;
+  const maxCorner = h.length - 1;
+  const x0 = Math.max(0, Math.min(maxCorner, tx));
+  const z0 = Math.max(0, Math.min(maxCorner, tz));
+  const x1 = Math.min(x0 + 1, maxCorner);
+  const z1 = Math.min(z0 + 1, maxCorner);
+  const h00 = h[x0]?.[z0];
+  const h10 = h[x1]?.[z0];
+  const h11 = h[x1]?.[z1];
+  const h01 = h[x0]?.[z1];
+  if (h00 == null) return -0.5;
+  const hs = (h00 + (h10 ?? h00) + (h11 ?? h00) + (h01 ?? h00)) >> 2;
+  return (-hs) / 8.0;
+}
+
+let playerFeetLocalY = 0;
+const _footScratch = new THREE.Vector3();
+
+function cachePlayerFeetOffset() {
+  playerFeetLocalY = 0;
+  if (!player) return;
+  player.updateMatrixWorld(true);
+  const inv = player.matrixWorld.clone().invert();
+  let minY = Infinity;
+  player.traverse(o => {
+    if (!o.isMesh || !o.geometry?.attributes?.position) return;
+    const pos = o.geometry.attributes.position;
+    const m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
+    for (let i = 0; i < pos.count; i++) {
+      _footScratch.fromBufferAttribute(pos, i).applyMatrix4(m);
+      if (_footScratch.y < minY) minY = _footScratch.y;
+    }
+  });
+  if (Number.isFinite(minY)) playerFeetLocalY = minY;
+}
+
+function alignPlayerToGround(rsX, rsZ) {
+  if (!player) return;
+  const tx = Math.floor(rsX / TILE);
+  const tz = Math.floor(rsZ / TILE);
+  const ground = tileHeightAverage(tx, tz, 0);
+  player.position.set(activeHalf - rsX, ground - playerFeetLocalY, rsZ - activeHalf);
+}
+
+/** RS tile X from Three.js scene X (317 east-west mirror). */
+function sceneXToRs(sceneX) {
+  return activeHalf - sceneX;
+}
+
+/** RS tile Z from Three.js scene Z. */
+function sceneZToRs(sceneZ) {
+  return sceneZ + activeHalf;
+}
+
+/** Mirror loc rotation for rsToScene X flip — kind-specific (317 CollisionMap). */
+function bakeLocRot(rot, kind = 0) {
+  rot = rot | 0;
+  if (rot > 3) return rot;
+  const r = rot & 3;
+  const k = kind | 0;
+  // Corner walls (kinds 1, 3): NW↔NE, SE↔SW under east-west mirror.
+  if (k === 1 || k === 3) {
+    return (rot & ~3) | (r ^ 1);
+  }
+  // Straight walls, L-walls, decor, props: west↔east (0↔2); north/south unchanged.
+  if (r === 0) return (rot & ~3) | 2;
+  if (r === 2) return (rot & ~3) | 0;
+  return rot;
+}
+
+/** RS region-local scene units (SW corner origin, 128 units per tile). */
+function locFootprintSizes(sizeX, sizeZ, rot = 0) {
+  const r = rot & 3;
+  if (r === 1 || r === 3) return { sizeX: sizeZ, sizeZ: sizeX };
+  return { sizeX, sizeZ };
+}
+
+function locAnchorRs(tx, tz, sizeX = 1, sizeZ = 1) {
+  return {
+    x: tx * TILE + (sizeX * TILE) / 2,
+    z: tz * TILE + (sizeZ * TILE) / 2,
+  };
+}
+
+const WALL_DECOR_FORWARD_X = [1, 0, -1, 0];
+const WALL_DECOR_FORWARD_Z = [0, -1, 0, 1];
+
+/** 317 Scene placement — mirrors Scene.add / setWall / setWallDecoration. */
+function locPlacementRs(kind, tx, tz, sizeX = 1, sizeZ = 1, rot = 0) {
+  if (kind === 10 || kind === 11) {
+    return locAnchorRs(tx, tz, sizeX, sizeZ);
+  }
+  // Walls, corners, roof props: tile centre (Scene.setWall x/z = tile*128+64).
+  let x = tx * TILE + TILE / 2;
+  let z = tz * TILE + TILE / 2;
+  if (kind === 5) {
+    const r = bakeLocRot(rot, kind) & 3;
+    x += WALL_DECOR_FORWARD_X[r] * 16;
+    z += WALL_DECOR_FORWARD_Z[r] * 16;
+  }
+  return { x, z };
+}
+
+const KIND11_EXTRA_YAW = (256 / 2048) * Math.PI * 2;
+
+function rsToScene(rsX, rsY, rsZ) {
+  // 317 fixed viewport: scene X increases west→east opposite our GLB export frame.
+  return new THREE.Vector3(activeHalf - rsX, rsY, rsZ - activeHalf);
+}
+
+function surfaceSceneYAtRs(rsX, rsZ, plane = 0) {
+  const worldX = activeHalf - rsX;
+  const worldZ = rsZ - activeHalf;
+  const meshY = sampleTerrainMeshY(worldX, worldZ);
+  if (meshY != null) return meshY;
+  const tx = Math.floor(rsX / TILE);
+  const tz = Math.floor(rsZ / TILE);
+  const u = (rsX / TILE) - tx;
+  const v = (rsZ / TILE) - tz;
+  return sampleTileSurfaceY(tx, tz, u, v, plane);
+}
+
+function alignObjectFeet(obj, groundY) {
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
+  obj.position.y += groundY - box.min.y;
+}
+
+function placeObjectAtTile(obj, tx, tz, { kind = 10, sizeX = 1, sizeZ = 1, plane = 0, rot = 0, u, v } = {}) {
+  let rsX, rsZ;
+  if (u != null && v != null) {
+    rsX = tx * TILE + u * TILE;
+    rsZ = tz * TILE + v * TILE;
+  } else {
+    const anchor = locPlacementRs(kind, tx, tz, sizeX, sizeZ, rot);
+    rsX = anchor.x;
+    rsZ = anchor.z;
+  }
+  // 317 MapRegion vertexMix: mean of the four SW-tile corner heights.
+  const groundY = kind <= 9
+    ? tileHeightAverage(tx, tz, plane)
+    : surfaceSceneYAtRs(rsX, rsZ, plane);
+  obj.position.copy(rsToScene(rsX, groundY, rsZ));
+  if (kind === 11) {
+    obj.rotation.y = KIND11_EXTRA_YAW;
+  } else {
+    obj.rotation.y = 0;
+  }
+  // Bbox foot snap only for free-standing props — walls use the 317 scene Y anchor.
+  if (kind === 10 || kind === 11 || kind === 22) {
+    alignObjectFeet(obj, groundY);
+  }
+}
+
+function locOccupiesTile(o, tx, tz) {
+  const fp = locFootprintSizes(o.sizeX || 1, o.sizeZ || 1, o.rot || 0);
+  return tx >= o.x && tx < o.x + fp.sizeX && tz >= o.z && tz < o.z + fp.sizeZ;
+}
+
+function isPlaceholderLocName(name, id) {
+  if (!name) return true;
+  const n = String(name).trim();
+  if (!n || /^loc_\d+$/i.test(n)) return true;
+  if (/^object$/i.test(n)) return true;
+  if (id != null && new RegExp(`^Object\\s*\\(${id}\\)$`, 'i').test(n)) return true;
+  return false;
+}
+
+const LOC_KIND_LABELS = {};
+
+function nameFromExamine(examine) {
+  if (!examine) return '';
+  let text = examine.trim();
+  const lower = text.toLowerCase();
+  if (lower.startsWith("it's ")) text = text.slice(5).trim();
+  else if (lower.startsWith('it is ')) text = text.slice(6).trim();
+  else if (lower.startsWith('this is ')) text = text.slice(8).trim();
+  return text.split(/[.!?]/)[0].trim().slice(0, 48) || text.slice(0, 48);
+}
+
+function deriveLocDisplayName({ name, examine, actions, debugName, id }) {
+  if (name && !isPlaceholderLocName(name, id)) return name;
+  const fromExamine = nameFromExamine(examine);
+  if (fromExamine) return fromExamine;
+  if (debugName) {
+    const s = String(debugName).replace(/_/g, ' ').trim();
+    return s ? s[0].toUpperCase() + s.slice(1) : s;
+  }
+  const action = (actions || []).find(a => a);
+  if (action) return `${action} object`;
+  return id != null ? `Object (${id})` : 'Object';
+}
+
+function locExamineMessage({ examine, name }) {
+  if (examine) return examine;
+  if (name) return `It's a ${name}.`;
+  return '';
+}
+
+function isLocInteractable(o) {
+  if (o.interactable != null) return !!o.interactable;
+  const meta = locById[o.id] || {};
+  if (meta.interactable != null) return !!meta.interactable;
+  const actions = (o.actions && o.actions.length) ? o.actions : (meta.actions || []);
+  return actions.some(Boolean);
+}
+
+/** 317 handleLocOptions: picked loc must be interactable and have a menu name or option. */
+function locContextMenuEligible(o) {
+  const e = typeof o.id === 'number' ? enrichRegionLoc(o) : o;
+  if (!e.interactable) return false;
+  if ((e.actions || []).some(Boolean)) return true;
+  const mn = (e.menuName || '').trim();
+  return !!mn && !isPlaceholderLocName(mn, e.id);
+}
+
+function locMenuLabel(o) {
+  const e = enrichRegionLoc(o);
+  const mn = (e.menuName || '').trim();
+  if (mn && !isPlaceholderLocName(mn, e.id)) return mn;
+  return e.name || `Object (${e.id})`;
+}
+
+function enrichRegionLoc(o) {
+  const meta = locById[o.id] || {};
+  const actions = (o.actions && o.actions.length) ? o.actions : (meta.actions || []);
+  const examine = o.examine || meta.examine || '';
+  const debugName = o.debugName || o.debug_name || meta.debugName || meta.debug_name || '';
+  const name = deriveLocDisplayName({
+    name: o.name || meta.name || '',
+    examine,
+    actions: actions.filter(Boolean),
+    debugName,
+    id: o.id,
+  });
+  return {
+    ...o,
+    name,
+    menuName: (o.menuName || meta.menuName || '').trim(),
+    actions: actions.filter(Boolean),
+    examine: locExamineMessage({ examine: o.examine || meta.examine || '', name: o.name || meta.name || name }),
+    interactable: o.interactable != null ? !!o.interactable : (meta.interactable != null ? !!meta.interactable : isLocInteractable({ ...o, actions: actions.filter(Boolean) })),
+    sizeX: o.sizeX || meta.sizeX || 1,
+    sizeZ: o.sizeZ || meta.sizeZ || 1,
+    rot: o.rot ?? o.rotation ?? 0,
+    kind: o.kind ?? 10,
+    plane: o.plane || 0,
+  };
+}
+
+function locDisplayName(o) {
+  return enrichRegionLoc(o).name;
+}
+
+function snapshotRegionLocPickProxies() {
+  regionLocPickProxies = [];
+  for (const root of regionScenery) {
+    const loc = root.userData.regionLoc || root.userData.loc;
+    if (!loc) continue;
+    const enriched = enrichRegionLoc(loc);
+    if (!locContextMenuEligible(enriched)) continue;
+    root.updateMatrixWorld(true);
+    _pickBox.setFromObject(root);
+    if (_pickBox.isEmpty()) continue;
+    regionLocPickProxies.push({
+      loc: enriched,
+      box: _pickBox.clone(),
+    });
+  }
+}
+
+function pickRegionLocsAtWorldPoint(point) {
+  if (!regionLocPickProxies.length || !point) return [];
+  const hits = [];
+  const rsX = sceneXToRs(point.x);
+  const rsZ = sceneZToRs(point.z);
+  for (const { loc, box } of regionLocPickProxies) {
+    _pickBoxPad.copy(box).expandByScalar(4);
+    if (!_pickBoxPad.containsPoint(point)) continue;
+    hits.push({ loc, dist: locPickDistance(loc, rsX, rsZ) });
+  }
+  hits.sort((a, b) => a.dist - b.dist);
+  return hits.map(h => h.loc).filter(locContextMenuEligible);
+}
+
+function pickRegionLocsScreen(ndc) {
+  if (!regionLocPickProxies.length) return [];
+  _pickRay.setFromCamera(ndc, camera);
+  const hits = [];
+  for (const { loc, box } of regionLocPickProxies) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let depth = Infinity, front = false;
+    for (let xi = 0; xi < 2; xi++) for (let yi = 0; yi < 2; yi++) for (let zi = 0; zi < 2; zi++) {
+      _pickV.set(
+        xi ? box.max.x : box.min.x,
+        yi ? box.max.y : box.min.y,
+        zi ? box.max.z : box.min.z,
+      ).project(camera);
+      if (_pickV.z >= 1) continue;
+      front = true;
+      if (_pickV.x < minX) minX = _pickV.x;
+      if (_pickV.x > maxX) maxX = _pickV.x;
+      if (_pickV.y < minY) minY = _pickV.y;
+      if (_pickV.y > maxY) maxY = _pickV.y;
+      if (_pickV.z < depth) depth = _pickV.z;
+    }
+    if (!front) continue;
+    if (ndc.x < minX || ndc.x > maxX || ndc.y < minY || ndc.y > maxY) continue;
+    // Require the pick ray to hit the world AABB (317-style screen box + depth test).
+    if (!_pickRay.ray.intersectBox(box, _pickV)) continue;
+    hits.push({ loc, depth: _pickV.distanceTo(_pickRay.ray.origin) });
+  }
+  hits.sort((a, b) => a.depth - b.depth);
+  return hits.map(h => h.loc).filter(locContextMenuEligible);
+}
+
+function locPickDistance(o, rsX, rsZ) {
+  const kind = o.kind ?? 10;
+  const fp = locFootprintSizes(o.sizeX || 1, o.sizeZ || 1, o.rot || 0);
+  const anchor = locPlacementRs(kind, o.x, o.z, fp.sizeX, fp.sizeZ, o.rot || 0);
+  return Math.hypot(rsX - anchor.x, rsZ - anchor.z);
+}
+
+function regionLocMeta(o) {
+  const e = enrichRegionLoc(o);
+  return {
+    kind: 'loc',
+    id: e.id,
+    name: locMenuLabel(e),
+    menuName: e.menuName || '',
+    actions: e.actions || [],
+    examine: e.examine || '',
+    interactable: e.interactable,
+    tile: { x: e.x, z: e.z },
+    rot: e.rot || 0,
+  };
+}
+
+/** 317 Model.pickedBitsets: only loc meshes under the cursor (front to back). */
+function pickRegionLocsFromRaycast(e) {
+  if (!regionScenery.length) return [];
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndcFromEvent(e), camera);
+  const hits = ray.intersectObjects(regionScenery, true);
+  const out = [];
+  const seen = new Set();
+  for (const hit of hits) {
+    let node = hit.object;
+    while (node) {
+      const rl = node.userData?.regionLoc;
+      if (rl) {
+        const enriched = enrichRegionLoc(rl);
+        if (locContextMenuEligible(enriched)) {
+          const key = `${enriched.id}:${enriched.x}:${enriched.z}:${enriched.plane || 0}:${enriched.kind ?? 10}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            out.push(enriched);
+          }
+        }
+        break;
+      }
+      node = node.parent;
+    }
+  }
+  return out;
+}
+
+function pickRegionLocsAtEvent(e) {
+  const rayHits = pickRegionLocsFromRaycast(e);
+  if (rayHits.length) return rayHits;
+  const ndc = ndcFromEvent(e);
+  const pt = raycastWorldPoint(e);
+  if (pt) {
+    const worldHits = pickRegionLocsAtWorldPoint(pt.point);
+    if (worldHits.length) return worldHits;
+  }
+  return pickRegionLocsScreen(ndc);
+}
+
+/** Left-click walk: only when the pick ray hits the loc AABB (no tile-neighbour fallback). */
+function pickRegionLocsDirectAtEvent(e) {
+  const pt = raycastWorldPoint(e);
+  if (!pt) return [];
+  return pickRegionLocsAtWorldPoint(pt.point);
+}
 
 // --- Combat / projectile state (ported from 317 ProjectileEntity + Elvarg) ---
 let worldCycle = 0;        // running count of client cycles
@@ -1307,10 +2897,24 @@ window.__world = {
   get transients() { return transients.map(t => ({ x: t.obj.position.x, y: t.obj.position.y, z: t.obj.position.z, ttl: t.ttl })); },
   get dummies() { return dummies.map(d => d.tile); },
   get placedCount() { return placedObjects.length; },
-  get player() { return player ? { tile: { ...playerTile }, rotDeg: +(player.rotation.y * 180 / Math.PI).toFixed(1), moving, running, clip: playerCurrent } : null; },
+  get player() {
+    if (!player) return null;
+    const rsX = sceneXToRs(player.position.x);
+    const rsZ = sceneZToRs(player.position.z);
+    return {
+      tile: { ...playerTile },
+      rotDeg: +(player.rotation.y * 180 / Math.PI).toFixed(1),
+      moving, running, clip: playerCurrent,
+      rsX: +rsX.toFixed(1), rsZ: +rsZ.toFixed(1),
+      groundY: +surfaceSceneYAtRs(rsX, rsZ, 0).toFixed(2),
+      posY: +player.position.y.toFixed(2),
+      noClipWalk,
+    };
+  },
   get animClips() { return Object.keys(playerActions); },
   setRun: (v) => { running = !!v; if (typeof runBtn !== 'undefined' && runBtn) { runBtn.textContent = 'Run: ' + (running ? 'on' : 'off'); } },
-  walk: (tx, tz) => startWalkTo(tx, tz),
+  setNoClipWalk: (v) => { noClipWalk = !!v; syncNoClipWalkBtn(); },
+  walk: (tx, tz, clickRs) => startWalkTo(tx, tz, clickRs),
   dummyScreen: (i) => { const d = dummies[i]; if (!d || !d.obj) return null; const s = worldToScreen(d.obj.position.x, d.midY, d.obj.position.z); return { x: Math.round(s.x), y: Math.round(s.y), visible: s.visible }; },
   dummyBox: (i) => { const d = dummies[i]; if (!d || !d.obj) return null; const b = new THREE.Box3().setFromObject(d.obj); return { minY: +b.min.y.toFixed(1), maxY: +b.max.y.toFixed(1), posY: +d.obj.position.y.toFixed(1), midY: +d.midY.toFixed(1), headY: +d.headY.toFixed(1) }; },
   pickAt: (clientX, clientY) => { const d = pickDummy(ndcFromEvent({ clientX, clientY })); return d ? { ...d.tile } : null; },
@@ -1327,12 +2931,76 @@ window.__world = {
   resetTiles: (tx, tz) => { if (tx == null) { for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++) { const m = tileMeshes[x * GRID + z]; if (m) m.material.color.set(tileBaseColor(x, z)); } return true; } const m = tileMeshes[tx * GRID + tz]; if (!m) return false; m.material.color.set(tileBaseColor(tx, tz)); return true; },
 };
 
-function tileToScene(tx, tz) {
-  return new THREE.Vector3((tx + 0.5) * TILE - HALF, 0, (tz + 0.5) * TILE - HALF);
+let playerLoadToken = 0;
+
+function sampleTileSurfaceY(tx, tz, u = 0.5, v = 0.5, plane = 0) {
+  const h = cornerHeightsGrid(plane);
+  if (h && h[0]) {
+    const maxCorner = h.length - 1;
+    const x0 = Math.max(0, Math.min(maxCorner, tx));
+    const z0 = Math.max(0, Math.min(maxCorner, tz));
+    const x1 = Math.min(x0 + 1, maxCorner);
+    const z1 = Math.min(z0 + 1, maxCorner);
+    const h00 = h[x0]?.[z0];
+    const h10 = h[x1]?.[z0];
+    const h11 = h[x1]?.[z1];
+    const h01 = h[x0]?.[z1];
+    if (h00 != null) {
+      const a = h10 ?? h00, b = h11 ?? h00, c = h01 ?? h00;
+      const hs = (1 - u) * ((1 - v) * h00 + v * c) + u * ((1 - v) * a + v * b);
+      return (-hs) / 8.0;
+    }
+  }
+  return -0.5;
+}
+
+function tileSceneY(tx, tz) {
+  return sampleTileSurfaceY(tx, tz, 0.5, 0.5);
+}
+
+function tileToScene(tx, tz, { forPlayer = false, sizeX = 1, sizeZ = 1, u, v } = {}) {
+  if (forPlayer) {
+    const rsX = u != null ? tx * TILE + u * TILE : locAnchorRs(tx, tz, 1, 1).x;
+    const rsZ = v != null ? tz * TILE + v * TILE : locAnchorRs(tx, tz, 1, 1).z;
+    alignPlayerToGround(rsX, rsZ);
+    return player.position.clone();
+  }
+  let rsX, rsZ;
+  if (u != null && v != null) {
+    rsX = tx * TILE + u * TILE;
+    rsZ = tz * TILE + v * TILE;
+  } else {
+    const anchor = locAnchorRs(tx, tz, sizeX, sizeZ);
+    rsX = anchor.x;
+    rsZ = anchor.z;
+  }
+  return rsToScene(rsX, surfaceSceneYAtRs(rsX, rsZ), rsZ);
 }
 
 function clampTile(v) {
-  return Math.max(0, Math.min(GRID - 1, v));
+  return Math.max(0, Math.min(activeGrid - 1, v));
+}
+
+function isTileBlocked(tx, tz) {
+  if (noClipWalk) return false;
+  if (!regionTerrain || !regionTerrain.blocked) return false;
+  if (tx < 0 || tz < 0 || tx >= activeGrid || tz >= activeGrid) return true;
+  const row = regionTerrain.blocked[tx];
+  return row ? !!row[tz] : false;
+}
+
+function buildDirectPath(from, to) {
+  const path = [];
+  let cx = from.x, cz = from.z;
+  let guard = 0;
+  while ((cx !== to.x || cz !== to.z) && guard++ < 512) {
+    if (cx < to.x) cx++;
+    else if (cx > to.x) cx--;
+    if (cz < to.z) cz++;
+    else if (cz > to.z) cz--;
+    path.push({ x: cx, z: cz });
+  }
+  return path;
 }
 
 function buildGrid() {
@@ -1340,22 +3008,23 @@ function buildGrid() {
   tileMeshes = [];
   tilePaint = {};
   const tileGeo = new THREE.PlaneGeometry(TILE, TILE);
-  for (let tx = 0; tx < GRID; tx++) {
-    for (let tz = 0; tz < GRID; tz++) {
+  for (let tx = 0; tx < activeGrid; tx++) {
+    for (let tz = 0; tz < activeGrid; tz++) {
       const mat = new THREE.MeshStandardMaterial({
         color: tileBaseColor(tx, tz),
         roughness: 1, metalness: 0,
+        visible: !regionTerrain,
       });
       const m = new THREE.Mesh(tileGeo, mat);
       m.rotation.x = -Math.PI / 2;
       const p = tileToScene(tx, tz);
-      m.position.set(p.x, -0.5, p.z);
+      m.position.set(p.x, p.y - 0.01, p.z);
       worldGroup.add(m);
-      tileMeshes[tx * GRID + tz] = m;
+      tileMeshes[tx * activeGrid + tz] = m;
     }
   }
   const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-  pickPlane = new THREE.Mesh(new THREE.PlaneGeometry(GRID * TILE, GRID * TILE), pickMat);
+  pickPlane = new THREE.Mesh(new THREE.PlaneGeometry(activeGrid * TILE, activeGrid * TILE), pickMat);
   pickPlane.rotation.x = -Math.PI / 2;
   worldGroup.add(pickPlane);
 
@@ -1383,8 +3052,16 @@ function disposeWorld() {
   crossMode = 0;
   if (chessWorld) { chessWorld.dispose(); }
   if (raveWorld) { raveWorld.dispose(); raveWorld = null; }
-  selectedNpcObj = null;
-  // Clear CSS3D screen objects.
+  regionTerrain = null;
+  regionMesh = null;
+  disposeRegionFrame();
+  for (const obj of regionScenery) {
+    obj.traverse(x => { if (x.geometry) x.geometry.dispose(); });
+  }
+  regionScenery = [];
+  regionLocCatalog = [];
+  regionLocPickProxies = [];
+  regionSceneryToken++;
   while (cssScene.children.length) cssScene.remove(cssScene.children[0]);
 }
 
@@ -1396,7 +3073,7 @@ function ensureChessWorld() {
     worldGroup,
     loader,
     applyWire,
-    tuneClipInterp,
+    tuneClip,
     tileToScene,
     tileMeshes,
     tileBaseColor,
@@ -1447,24 +3124,36 @@ async function enterWorld() {
   clearCurrent();
   grid.visible = false;
   worldActive = true;
+  syncRendererPixelRatio();
+  applyWorldCameraControls();
   playerTile = { x: Math.floor(GRID / 2), z: Math.floor(GRID / 2) };
   buildGrid();
   if (!idkData) await loadIdkManifest();
   if (!spriteData) await loadSpriteManifest();
   await loadPlayer();
-  camera.near = 1; camera.far = 100000; camera.updateProjectionMatrix();
-  controls.target.set(0, 60, 0);
-  camera.position.set(0, 1200, 1500);
-  controls.update();
+  syncWorldCameraClip();
+  setCameraLock(true);
+  snapCameraToPlayer();
   spawnDummy(3, 11);
   spawnDummy(11, 11);
   renderWorldLocList(worldLocSearchEl ? worldLocSearchEl.value : '');
   renderWorldNpcList(worldNpcSearchEl ? worldNpcSearchEl.value : '');
-  statusEl.textContent = 'World mode: left-click a tile to walk (0.6s/tile).';
+  statusEl.textContent = 'World mode: left-click walk, middle-drag orbit, right-drag pan.';
+  setChatVisible(true);
+  if (chatLogEl && !chatLogEl.childElementCount) {
+    chatPush('Welcome to RuneScape.', 'sys');
+    chatPush('Left-click objects to interact, or click the ground to walk.', 'sys');
+  }
+  const rx = parseInt(regionXEl?.value || '48', 10) || 48;
+  const ry = parseInt(regionYEl?.value || '54', 10) || 54;
+  await loadCacheRegion(rx, ry);
 }
 
 function exitWorld() {
   worldActive = false;
+  setChatVisible(false);
+  syncRendererPixelRatio();
+  applyInspectCameraControls();
   raveEmoteIdx = 0;
   raveEmoteTimer = 0;
   grid.visible = true;
@@ -1509,7 +3198,8 @@ function loadPlayer() {
       if (player) { scene.remove(player); }
       player = gltf.scene;
       applyWire(player);
-      const sp = tileToScene(playerTile.x, playerTile.z);
+      cachePlayerFeetOffset();
+      const sp = tileToScene(playerTile.x, playerTile.z, { forPlayer: true });
       player.position.copy(sp);
       playerYaw317 = playerDstYaw317 = 0;
       player.rotation.y = yaw317ToSceneRot(0);
@@ -1526,7 +3216,7 @@ function loadPlayer() {
           if (moving) sync317MoveClip(); else update317StandClip();
         });
         for (const clip of gltf.animations) {
-          tuneClipInterp(clip);
+          tuneClip(clip);
           const action = playerMixer.clipAction(clip);
           const loopNames = ['stand', 'turn', 'walk', 'turn_around', 'turn_left', 'turn_right', 'run',
             'dance', 'jig', 'headbang'];
@@ -1539,7 +3229,7 @@ function loadPlayer() {
       } else {
         playerMixer = null;
       }
-      worldStatusEl.textContent = 'Left-click a tile to walk. 0.6s per tile.';
+      worldStatusEl.textContent = 'Left-click to walk. Middle-drag orbit, right-drag pan, scroll zoom.';
       resolve();
     }, undefined, err => { worldStatusEl.textContent = 'Player load failed: ' + err; resolve(); });
   });
@@ -1561,26 +3251,54 @@ function reloadPlayer() {
 }
 
 function buildPath(from, to) {
-  const path = [];
-  let cx = from.x, cz = from.z;
-  let guard = 0;
-  while ((cx !== to.x || cz !== to.z) && guard++ < 256) {
-    if (cx < to.x) cx++; else if (cx > to.x) cx--;
-    if (cz < to.z) cz++; else if (cz > to.z) cz--;
-    path.push({ x: cx, z: cz });
+  if (noClipWalk || !regionTerrain?.blocked) {
+    return buildDirectPath(from, to);
   }
-  return path;
+  const q = [{ x: from.x, z: from.z, path: [] }];
+  const seen = new Set([`${from.x},${from.z}`]);
+  while (q.length) {
+    const cur = q.shift();
+    if (cur.x === to.x && cur.z === to.z) return cur.path;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cur.x + dx;
+      const nz = cur.z + dz;
+      const key = `${nx},${nz}`;
+      if (seen.has(key)) continue;
+      if (nx < 0 || nz < 0 || nx >= activeGrid || nz >= activeGrid) continue;
+      if (isTileBlocked(nx, nz)) continue;
+      seen.add(key);
+      q.push({ x: nx, z: nz, path: cur.path.concat([{ x: nx, z: nz }]) });
+    }
+  }
+  return [];
 }
 
-function startWalkTo(tx, tz) {
+function startWalkTo(tx, tz, clickRs) {
   tx = clampTile(tx); tz = clampTile(tz);
-  const rsX = player.position.x + HALF;
-  const rsZ = player.position.z + HALF;
+  const rsX = sceneXToRs(player.position.x);
+  const rsZ = sceneZToRs(player.position.z);
   const origin = {
     x: clampTile(Math.floor(rsX / TILE)),
     z: clampTile(Math.floor(rsZ / TILE)),
   };
+  if (isTileBlocked(tx, tz)) {
+    worldStatusEl.textContent = 'Destination tile is blocked (enable Noclip walk to bypass).';
+    return;
+  }
   walkQueue = buildPath(origin, { x: tx, z: tz });
+  if (!walkQueue.length && (origin.x !== tx || origin.z !== tz)) {
+    worldStatusEl.textContent = 'No path to tile — enable Noclip walk or pick another destination.';
+    return;
+  }
+  if (clickRs && Number.isFinite(clickRs.x) && Number.isFinite(clickRs.z)) {
+    walkQueue.push({
+      x: tx,
+      z: tz,
+      rsX: clickRs.x,
+      rsZ: clickRs.z,
+      exact: true,
+    });
+  }
 }
 
 function radToYaw317(rad) {
@@ -1652,8 +3370,8 @@ function moveSpeed317(turning) {
 function sync317MoveClip() {
   if (!walkQueue.length) { update317StandClip(); return; }
   const next = walkQueue[0];
-  const rsX = player.position.x + HALF;
-  const rsZ = player.position.z + HALF;
+  const rsX = sceneXToRs(player.position.x);
+  const rsZ = sceneZToRs(player.position.z);
   const dst = tileCenterRs(next.x, next.z);
   const dstYaw317 = dstYaw317FromDelta(rsX, rsZ, dst.x, dst.z);
   const rem = signedRemainingYaw(playerYaw317, dstYaw317);
@@ -1720,9 +3438,11 @@ function update317Movement(dt) {
 
   moving = true;
   const next = walkQueue[0];
-  let rsX = player.position.x + HALF;
-  let rsZ = player.position.z + HALF;
-  const dst = tileCenterRs(next.x, next.z);
+  let rsX = sceneXToRs(player.position.x);
+  let rsZ = sceneZToRs(player.position.z);
+  const dst = next.exact
+    ? { x: next.rsX, z: next.rsZ }
+    : tileCenterRs(next.x, next.z);
   const dstX = dst.x;
   const dstZ = dst.z;
 
@@ -1748,7 +3468,7 @@ function update317Movement(dt) {
     playerTile = { x: next.x, z: next.z };
   }
 
-  player.position.set(rsX - HALF, 0, rsZ - HALF);
+  alignPlayerToGround(rsX, rsZ);
   update317Facing(cycles);
   player.rotation.y = yaw317ToSceneRot(playerYaw317);
 }
@@ -1756,7 +3476,9 @@ function update317Movement(dt) {
 function updateWorld(dt) {
   if (playerMixer) playerMixer.update(dt);
   for (const d of dummies) if (d.mixer) d.mixer.update(dt);
-  for (const m of placedMixers) m.update(dt);
+  for (const m of placedMixers) {
+    if (!m._owner || m._owner.visible !== false) m.update(dt);
+  }
   updateProjectiles(dt);
   updateOverlay();
   updateCross();
@@ -1766,6 +3488,83 @@ function updateWorld(dt) {
   if (chessWorld?.isActive()) chessWorld.update(dt);
   if (raveWorld?.isActive()) raveWorld.update(dt, camera, camera.position, _listenerFwd, player);
   updateCameraFollow();
+  if (regionTerrain) updateRegionSceneryVisibility();
+}
+
+function syncWorldCameraClip() {
+  camera.near = 80;
+  camera.far = 24000;
+  if (!raveWorld?.isActive()) scene.fog = null;
+  camera.updateProjectionMatrix();
+}
+
+function resetRegionSceneryCull() {
+  _sceneryEyeTile.x = -999;
+  _sceneryEyeTile.z = -999;
+  _sceneryCullRsX = NaN;
+  _sceneryCullRsZ = NaN;
+  _sceneryCullCamDist = NaN;
+  _sceneryCullLimTiles = -1;
+}
+
+/** Base draw-dist setting × zoom-out factor (317 fixed 25 tiles; we extend when orbiting out). */
+function effectiveDrawDistTiles() {
+  if (worldDrawDistTiles <= 0) return 0;
+  const camDist = camera.position.distanceTo(controls.target);
+  const scale = Math.max(1, camDist / SCENERY_ZOOM_REF_DIST);
+  const maxTiles = Math.ceil(activeGrid * 0.5);
+  return Math.min(Math.ceil(worldDrawDistTiles * scale), maxTiles);
+}
+
+/** 317-style square draw range around the camera eye (Scene.java drawDist). */
+function updateRegionSceneryVisibility(force = false) {
+  if (!regionTerrain || !regionScenery.length) return;
+  if (worldDrawDistTiles <= 0) {
+    for (const root of regionScenery) root.visible = true;
+    _sceneryVisibleCount = regionScenery.length;
+    return;
+  }
+  const rsCamX = sceneXToRs(camera.position.x);
+  const rsCamZ = sceneZToRs(camera.position.z);
+  const camDist = camera.position.distanceTo(controls.target);
+  const limTiles = effectiveDrawDistTiles();
+  const eyeX = Math.floor(rsCamX / TILE);
+  const eyeZ = Math.floor(rsCamZ / TILE);
+  const moved = force
+    || !Number.isFinite(_sceneryCullRsX)
+    || Math.abs(rsCamX - _sceneryCullRsX) > SCENERY_CULL_MOVE
+    || Math.abs(rsCamZ - _sceneryCullRsZ) > SCENERY_CULL_MOVE
+    || Math.abs(camDist - _sceneryCullCamDist) > SCENERY_ZOOM_REF_DIST * 0.06
+    || limTiles !== _sceneryCullLimTiles
+    || eyeX !== _sceneryEyeTile.x
+    || eyeZ !== _sceneryEyeTile.z;
+  if (!moved) return;
+  _sceneryCullRsX = rsCamX;
+  _sceneryCullRsZ = rsCamZ;
+  _sceneryCullCamDist = camDist;
+  _sceneryCullLimTiles = limTiles;
+  _sceneryEyeTile.x = eyeX;
+  _sceneryEyeTile.z = eyeZ;
+
+  const lim = limTiles * TILE;
+  let visible = 0;
+  for (const root of regionScenery) {
+    root.getWorldPosition(_pickV);
+    const ox = sceneXToRs(_pickV.x);
+    const oz = sceneZToRs(_pickV.z);
+    const show = Math.abs(ox - rsCamX) <= lim && Math.abs(oz - rsCamZ) <= lim;
+    root.visible = show;
+    if (show) visible++;
+  }
+  _sceneryVisibleCount = visible;
+}
+
+function snapCameraToPlayer() {
+  if (!player) return;
+  _camFocus.set(player.position.x, player.position.y + 40, player.position.z);
+  controls.target.copy(_camFocus);
+  camera.position.set(_camFocus.x - 480, _camFocus.y + 920, _camFocus.z + 760);
+  controls.update();
 }
 
 // When locked, recenter the orbit pivot onto the player every frame while
@@ -1774,10 +3573,12 @@ const _camShift = new THREE.Vector3();
 const _camFocus = new THREE.Vector3();
 function updateCameraFollow() {
   if (!cameraLock || !player) return;
-  _camFocus.set(player.position.x, 60, player.position.z);
+  _camFocus.set(player.position.x, player.position.y + 40, player.position.z);
   _camShift.copy(_camFocus).sub(controls.target);
-  controls.target.add(_camShift);
-  camera.position.add(_camShift);
+  if (_camShift.lengthSq() < 1.0) return;
+  const t = 0.12;
+  controls.target.addScaledVector(_camShift, t);
+  camera.position.addScaledVector(_camShift, t);
 }
 
 // --- Spotanim loading (cached buffers, parsed per spawn for independent mixers) ---
@@ -1814,7 +3615,7 @@ async function spawnSpotanim(id, pos, heightUnits, yaw) {
   if (gltf.animations && gltf.animations.length) {
     mixer = new THREE.AnimationMixer(obj);
     const clip = gltf.animations[0];
-    tuneClipInterp(clip);
+    tuneClip(clip);
     const action = mixer.clipAction(clip);
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
@@ -1905,7 +3706,7 @@ async function makeProjectileEntity(id) {
   if (gltf.animations && gltf.animations.length) {
     mixer = new THREE.AnimationMixer(obj);
     const clip = gltf.animations[0];
-    tuneClipInterp(clip);
+    tuneClip(clip);
     const action = mixer.clipAction(clip);
     action.setLoop(THREE.LoopRepeat);
     action.play();
@@ -2008,7 +3809,7 @@ function spawnDummy(tx, tz) {
     if (!worldActive) return;
     const obj = gltf.scene;
     applyWire(obj);
-    const sp = tileToScene(tx, tz);
+    const sp = tileToScene(tx, tz, { forPlayer: true });
     obj.position.copy(sp);
     obj.rotation.y = Math.PI; // face the player area
     scene.add(obj);
@@ -2016,7 +3817,7 @@ function spawnDummy(tx, tz) {
     if (gltf.animations && gltf.animations.length) {
       mixer = new THREE.AnimationMixer(obj);
       const stand = gltf.animations.find(c => c.name === 'stand') || gltf.animations[0];
-      tuneClipInterp(stand);
+      tuneClip(stand);
       mixer.clipAction(stand).setLoop(THREE.LoopRepeat).play();
     }
     const box = new THREE.Box3().setFromObject(obj);
@@ -2040,8 +3841,6 @@ function spawnDummy(tx, tz) {
 // not per-triangle. Raycasting an animated SkinnedMesh in three.js is unreliable
 // (it tests the bind pose / stale bounds), so we do the same projected-AABB test
 // and return the front-most dummy whose box contains the cursor.
-const _pickBox = new THREE.Box3();
-const _pickV = new THREE.Vector3();
 function pickDummy(ndc) {
   if (!dummies.length) return null;
   let best = null, bestDepth = Infinity;
@@ -2228,6 +4027,38 @@ const overlayEl = document.getElementById('worldOverlay');
 const crossEl = document.getElementById('rsCross');
 const hoverEl = document.getElementById('rsHover');
 const menuEl = document.getElementById('rsMenu');
+const chatEl = document.getElementById('rsChat');
+const chatLogEl = document.getElementById('rsChatLog');
+const chatInputEl = document.getElementById('rsChatInput');
+
+function chatPush(msg, cls = 'game') {
+  if (!chatLogEl) return;
+  const row = document.createElement('div');
+  row.className = 'line ' + cls;
+  const img = document.createElement('img');
+  const rgb = cls === 'sys' ? '00ffff' : 'ffff00';
+  img.src = `/api/font/p12_full.png?text=${encodeURIComponent(msg)}&rgb=${rgb}`;
+  img.alt = msg;
+  row.appendChild(img);
+  chatLogEl.appendChild(row);
+  while (chatLogEl.childElementCount > 100) chatLogEl.removeChild(chatLogEl.firstChild);
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+function setChatVisible(visible) {
+  if (chatEl) chatEl.hidden = !visible;
+}
+
+if (chatInputEl) {
+  chatInputEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const text = chatInputEl.value.trim();
+    if (!text) return;
+    chatPush(text, 'game');
+    chatInputEl.value = '';
+  });
+}
 
 function worldToScreen(x, y, z) {
   const v = new THREE.Vector3(x, y, z).project(camera);
@@ -2299,6 +4130,7 @@ function fireSpellAtWorld(fromPos, toPos, spell, yaw = 0) {
       lastCycle: worldCycle + speed,
       x: 0, y: 0, z: 0, velX: 0, velZ: 0, velY: 0, accY: 0, vel: 0, yaw: 0, pitch: 0,
       endGfx: spell.end,
+      impactSound: spell.impactSound,
       onImpact: resolve,
     };
     projectiles.push(p);
@@ -2310,6 +4142,17 @@ function fireSpellAtWorld(fromPos, toPos, spell, yaw = 0) {
   });
 }
 
+function waitWorldTicks(ticks) {
+  const target = worldCycle + ticks;
+  return new Promise(resolve => {
+    function poll() {
+      if (worldCycle >= target) resolve();
+      else requestAnimationFrame(poll);
+    }
+    poll();
+  });
+}
+
 function createChessFx() {
   return {
     spawnGfx: (pos, id, h, yaw) => spawnSpotanim(id, pos, GFX_HEIGHT[h] || 0, yaw),
@@ -2317,6 +4160,9 @@ function createChessFx() {
     spawnHit: (obj, dmg) => spawnObjectHit(obj, dmg),
     updateHits: () => updateChessSplats(),
     clearHits: () => clearChessSplats(),
+    playSfx: (id, pos) => playSfx(id, pos),
+    getCycle: () => worldCycle,
+    waitTicks: (ticks) => waitWorldTicks(ticks),
     delay: (ms) => new Promise(r => setTimeout(r, ms)),
   };
 }
@@ -2401,12 +4247,29 @@ function ndcFromEvent(e) {
 }
 
 function tileFromEvent(e) {
+  const pt = raycastWorldPoint(e);
+  return pt ? { x: pt.x, z: pt.z } : null;
+}
+
+function raycastWorldPoint(e) {
   const ray = new THREE.Raycaster();
   ray.setFromCamera(ndcFromEvent(e), camera);
-  const hits = ray.intersectObject(pickPlane, false);
+  const targets = [];
+  for (const root of regionScenery) targets.push(root);
+  if (regionMesh) targets.push(regionMesh);
+  if (pickPlane) targets.push(pickPlane);
+  const hits = ray.intersectObjects(targets, true);
   if (!hits.length) return null;
   const p = hits[0].point;
-  return { x: clampTile(Math.floor((p.x + HALF) / TILE)), z: clampTile(Math.floor((p.z + HALF) / TILE)) };
+  const rsX = sceneXToRs(p.x);
+  const rsZ = sceneZToRs(p.z);
+  return {
+    x: clampTile(Math.floor(rsX / TILE)),
+    z: clampTile(Math.floor(rsZ / TILE)),
+    rsX,
+    rsZ,
+    point: p,
+  };
 }
 
 // 317-style right-click menu.
@@ -2438,6 +4301,7 @@ renderer.domElement.addEventListener('contextmenu', e => {
   const d = pickDummy(ndc);
   const npc = d ? null : pickNpc(ndc);
   const lo = (d || npc) ? null : pickPlaced(ndc);
+  const regionLocs = (d || npc || lo) ? [] : pickRegionLocsAtEvent(e);
   const opts = [];
   // The target tile/dummy comes from the right-click (e); the cross is drawn at the
   // option-click (ev) so the red/yellow X appears where the mouse was when clicked.
@@ -2457,17 +4321,36 @@ renderer.domElement.addEventListener('contextmenu', e => {
     const info = getPlacedMeta(lo);
     if (info.kind === 'loc') {
       for (const action of (info.actions || [])) {
-        opts.push({ label: `${action} <span style="color:#0ff">${info.name}</span>`, act: (ev) => { showCross(1, ev.clientX, ev.clientY); worldStatusEl.textContent = `${action} ${info.name} (#${info.id}).`; } });
+        opts.push({ label: `${action} <span style="color:#0ff">${info.name}</span>`, act: (ev) => { showCross(2, ev.clientX, ev.clientY); worldStatusEl.textContent = `${action} ${info.name} (#${info.id}).`; } });
       }
     }
   }
-  opts.push({ label: 'Walk here', act: (ev) => { const t = tileFromEvent(e); if (t) { startWalkTo(t.x, t.z); showCross(1, ev.clientX, ev.clientY); } } });
+  if (regionLocs.length) {
+    for (const o of regionLocs) {
+      const info = regionLocMeta(o);
+      for (const action of (info.actions || [])) {
+        opts.push({ label: `${action} <span style="color:#0ff">${info.name}</span>`, act: (ev) => { showCross(2, ev.clientX, ev.clientY); worldStatusEl.textContent = `${action} ${info.name} (#${info.id}).`; } });
+      }
+    }
+  }
+  opts.push({ label: 'Walk here', act: (ev) => { const t = tileFromEvent(e); if (t) { startWalkTo(t.x, t.z, { x: t.rsX, z: t.rsZ }); showCross(1, ev.clientX, ev.clientY); } } });
   if (d) {
     opts.push({ label: `Examine <span style="color:#ff0">${d.name}</span>`, act: () => { combatStatusEl.textContent = 'A practice dummy for testing combat.'; } });
   }
   if (lo) {
     const info = getPlacedMeta(lo);
-    opts.push({ label: `Examine <span style="color:#0ff">${info.name}</span>`, act: () => { worldStatusEl.textContent = info.examine || `It's ${info.name}.`; } });
+    opts.push({ label: `Examine <span style="color:#0ff">${info.name}</span>`, act: () => {
+      worldStatusEl.textContent = info.examine || locExamineMessage(info);
+    } });
+  }
+  for (const o of regionLocs) {
+    const info = regionLocMeta(o);
+    const dup = opts.some(x => x.label.includes(info.name));
+    if (!dup) {
+      opts.push({ label: `Examine <span style="color:#0ff">${info.name}</span>`, act: () => {
+      worldStatusEl.textContent = info.examine || locExamineMessage(info);
+    } });
+    }
   }
   opts.push({ label: 'Cancel', act: () => {} });
   openMenu(e.clientX, e.clientY, opts);
@@ -2494,6 +4377,7 @@ renderer.domElement.addEventListener('pointermove', e => {
   const d = pickDummy(ndc);
   const npc = d ? null : pickNpc(ndc);
   const lo = (d || npc) ? null : pickPlaced(ndc);
+  const regionLocs = (d || npc || lo) ? [] : pickRegionLocsAtEvent(e);
   if (deleteMode) {
     if (lo) {
       const info = getPlacedMeta(lo);
@@ -2518,6 +4402,14 @@ renderer.domElement.addEventListener('pointermove', e => {
       hoverEl.innerHTML = `<span style="color:#fff">Examine</span> <span style="color:${info.kind === 'npc' ? '#ff0' : '#0ff'}">${info.name}</span>`;
     }
     hoverEl.style.display = 'block';
+  } else if (regionLocs.length) {
+    const info = regionLocMeta(regionLocs[0]);
+    if (info.actions && info.actions.length) {
+      hoverEl.innerHTML = `<span style="color:#fff">${info.actions[0]}</span> <span style="color:#0ff">${info.name}</span>`;
+    } else {
+      hoverEl.innerHTML = `<span style="color:#fff">Examine</span> <span style="color:#0ff">${info.name}</span>`;
+    }
+    hoverEl.style.display = 'block';
   } else {
     hoverEl.innerHTML = `<span style="color:#fff">Walk here</span>`;
     hoverEl.style.display = 'block';
@@ -2529,13 +4421,13 @@ renderer.domElement.addEventListener('pointermove', e => {
     const hits = ray.intersectObject(pickPlane, false);
     if (hits.length) {
       const p = hits[0].point;
-      updateGhostAt(clampTile(Math.floor((p.x + HALF) / TILE)), clampTile(Math.floor((p.z + HALF) / TILE)));
+      updateGhostAt(clampTile(Math.floor(sceneXToRs(p.x) / TILE)), clampTile(Math.floor(sceneZToRs(p.z) / TILE)));
     } else hideGhost();
   } else hideGhost();
 });
 renderer.domElement.addEventListener('pointerleave', () => { hoverEl.style.display = 'none'; hideGhost(); });
 
-// Pointer: distinguish orbit-drag from a click-to-walk / click-to-place.
+// Pointer: left-click walk / place; middle-drag orbits (OrbitControls).
 let downPos = null;
 renderer.domElement.addEventListener('pointerdown', e => {
   if (e.button === 0) downPos = { x: e.clientX, y: e.clientY };
@@ -2544,7 +4436,7 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (!worldActive || e.button !== 0 || !downPos) { downPos = null; return; }
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
   downPos = null;
-  if (moved > 5) return; // it was a camera drag
+  if (moved > 8) return;
   const rect = renderer.domElement.getBoundingClientRect();
   const ndc = new THREE.Vector2(
     ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -2575,24 +4467,61 @@ renderer.domElement.addEventListener('pointerup', e => {
     const npc = pickNpc(ndc);
     if (npc) {
       selectNpcHit(npc);
-      showCross(2, e.clientX, e.clientY);
+      showCross(1, e.clientX, e.clientY);
+      const tx = npc.tile?.x ?? npc.tx;
+      const tz = npc.tile?.z ?? npc.tz;
+      const pt = raycastWorldPoint(e);
+      if (tx != null && tz != null) {
+        startWalkTo(tx, tz, pt ? { x: pt.rsX, z: pt.rsZ } : null);
+      }
       const nm = npcDisplayName(npc);
       if (npc.kind === 'chess' && chessWorld?.isActive()) {
         chessWorld.handleClick(npc.tx, npc.tz);
         worldStatusEl.textContent = `${nm} (${npc.sq || ''})`;
       } else {
-        worldStatusEl.textContent = `Selected ${nm}.`;
+        worldStatusEl.textContent = `Walking to ${nm}.`;
       }
+      return;
+    }
+    const lo = pickPlaced(ndc);
+    if (lo) {
+      const u = getPlacedMeta(lo);
+      if (u?.kind === 'loc' && u.actions?.length) {
+        showCross(2, e.clientX, e.clientY);
+        worldStatusEl.textContent = `${u.actions[0]} ${u.name || ('#' + u.id)}.`;
+        return;
+      }
+      showCross(1, e.clientX, e.clientY);
+      const pt = raycastWorldPoint(e);
+      if (u?.tile) startWalkTo(u.tile.x, u.tile.z, pt ? { x: pt.rsX, z: pt.rsZ } : null);
+      worldStatusEl.textContent = `Walking to ${u.name || ('#' + u.id)}.`;
+      return;
+    }
+    const regionLocs = pickRegionLocsDirectAtEvent(e);
+    if (regionLocs.length) {
+      const info = regionLocMeta(regionLocs[0]);
+      if (info.actions?.length) {
+        showCross(2, e.clientX, e.clientY);
+        worldStatusEl.textContent = `${info.actions[0]} ${info.name}.`;
+        return;
+      }
+      showCross(1, e.clientX, e.clientY);
+      const pt = raycastWorldPoint(e);
+      startWalkTo(info.tile.x, info.tile.z, pt ? { x: pt.rsX, z: pt.rsZ } : null);
+      worldStatusEl.textContent = `Walking to ${info.name}.`;
       return;
     }
   }
   const ray = new THREE.Raycaster();
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObject(pickPlane, false);
+  const targets = [];
+  if (regionMesh) targets.push(regionMesh);
+  if (pickPlane) targets.push(pickPlane);
+  const hits = ray.intersectObjects(targets, true);
   if (!hits.length) return;
   const p = hits[0].point;
-  const tx = clampTile(Math.floor((p.x + HALF) / TILE));
-  const tz = clampTile(Math.floor((p.z + HALF) / TILE));
+  const tx = clampTile(Math.floor(sceneXToRs(p.x) / TILE));
+  const tz = clampTile(Math.floor(sceneZToRs(p.z) / TILE));
   if (chessWorld?.isActive() && chessWorld.isBoardTile(tx, tz)) {
     chessWorld.handleClick(tx, tz);
     showCross(1, e.clientX, e.clientY);
@@ -2609,7 +4538,9 @@ renderer.domElement.addEventListener('pointerup', e => {
   } else if (placeMode) {
     placeAtTile(tx, tz);
   } else {
-    startWalkTo(tx, tz);
+    const rsX = sceneXToRs(p.x);
+    const rsZ = sceneZToRs(p.z);
+    startWalkTo(tx, tz, { x: rsX, z: rsZ });
     showCross(1, e.clientX, e.clientY);
   }
 });
@@ -2649,31 +4580,163 @@ runBtn.addEventListener('click', () => {
   runBtn.style.fontWeight = running ? 'bold' : 'normal';
 });
 
+function syncNoClipWalkBtn() {
+  if (!noClipWalkBtn) return;
+  noClipWalkBtn.textContent = 'Noclip walk: ' + (noClipWalk ? 'on' : 'off');
+  noClipWalkBtn.style.fontWeight = noClipWalk ? 'bold' : 'normal';
+}
+
+noClipWalkBtn.addEventListener('click', () => {
+  noClipWalk = !noClipWalk;
+  syncNoClipWalkBtn();
+  worldStatusEl.textContent = noClipWalk
+    ? 'Noclip walk on — ignoring blocked tiles for pathfinding.'
+    : 'Noclip walk off — 317-style blocked-tile pathfinding.';
+});
+syncNoClipWalkBtn();
+
 // Core placement used by Place-mode clicks, the console helper and map import.
-function placeLocAt(id, tx, tz, rot, meta) {
+function placeLocAt(id, tx, tz, rot, meta, kind, opts) {
   rot = rot || 0;
-  const url = `/api/loc/${id}.glb?rot=${rot}&t=${Date.now()}`;
+  const isRegion = !!(opts && opts.regionScenery);
+  const locKind = (kind != null && kind !== '') ? kind : ((opts && opts.kind != null) ? opts.kind : 10);
+  const exportRot = bakeLocRot(rot, locKind);
+  const kindQ = (kind != null && kind !== '') ? `&kind=${kind}` : '';
+  const url = `/api/loc/${id}.glb?rot=${exportRot}${kindQ}&t=${Date.now()}`;
   return new Promise((resolve) => {
     loader.load(url, gltf => {
       if (!worldActive) { resolve(null); return; }
       const obj = gltf.scene;
       applyWire(obj);
-      obj.position.copy(tileToScene(tx, tz));
+      const sizeX = (meta && meta.sizeX) || (opts && opts.sizeX) || 1;
+      const sizeZ = (meta && meta.sizeZ) || (opts && opts.sizeZ) || 1;
+      const fp = locFootprintSizes(sizeX, sizeZ, rot);
+      placeObjectAtTile(obj, tx, tz, {
+        kind: locKind,
+        sizeX: fp.sizeX,
+        sizeZ: fp.sizeZ,
+        plane: (opts && opts.plane) || 0,
+        rot,
+      });
       const m = meta || locById[id] || {};
+      const regionLoc = enrichRegionLoc({
+        id,
+        x: tx,
+        z: tz,
+        rot,
+        kind: locKind,
+        plane: (opts && opts.plane) || 0,
+        sizeX: fp.sizeX,
+        sizeZ: fp.sizeZ,
+        name: m.name,
+        actions: m.actions,
+        examine: m.examine,
+      });
       obj.userData.loc = {
         id,
-        name: m.name || `loc_${id}`,
-        actions: m.actions || [],
-        examine: m.examine || '',
+        name: regionLoc.name,
+        actions: regionLoc.actions || [],
+        examine: regionLoc.examine || '',
         tile: { x: tx, z: tz },
         rot,
       };
-      scene.add(obj);
-      placedObjects.push(obj);
+      if (isRegion) {
+        obj.userData.regionLoc = regionLoc;
+        worldGroup.add(obj);
+        obj.userData.regionScenery = true;
+        regionScenery.push(obj);
+      } else {
+        scene.add(obj);
+        placedObjects.push(obj);
+      }
       attachPlacedAnim(obj, gltf);
       resolve(obj);
     }, undefined, err => { worldStatusEl.textContent = 'Place failed: ' + err; resolve(null); });
   });
+}
+
+function disposeRegionScenery() {
+  for (const obj of regionScenery) {
+    if (obj.userData.mixer) {
+      const mi = placedMixers.indexOf(obj.userData.mixer);
+      if (mi >= 0) placedMixers.splice(mi, 1);
+      obj.userData.mixer.stopAllAction();
+      obj.userData.mixer = null;
+    }
+    if (obj.parent) obj.parent.remove(obj);
+    obj.traverse(x => { if (x.geometry) x.geometry.dispose(); });
+  }
+  regionScenery = [];
+  regionLocCatalog = [];
+  regionLocPickProxies = [];
+  resetRegionSceneryCull();
+  _sceneryVisibleCount = 0;
+  regionSceneryToken++;
+}
+
+function shouldLoadRegionLoc(o) {
+  const kind = o.kind ?? 10;
+  // 317 lowmem: skip roof loc kinds entirely.
+  if (kind >= 12 && kind <= 21) return false;
+  const plane = o.plane || 0;
+  if (plane > 0) {
+    const settings = regionTerrain?.settings;
+    const bridge = settings?.[o.x]?.[o.z] & 0x2;
+    if (!bridge) return false;
+  }
+  return true;
+}
+
+function consolidateRegionScenery() {
+  snapshotRegionLocPickProxies();
+  for (const root of regionScenery) {
+    root.frustumCulled = true;
+    root.matrixAutoUpdate = false;
+    root.updateMatrix();
+  }
+  resetRegionSceneryCull();
+  updateRegionSceneryVisibility(true);
+}
+
+function placeRegionLoc(o) {
+  const loc = enrichRegionLoc(o);
+  const baseOpts = {
+    regionScenery: true,
+    sizeX: loc.sizeX || 1,
+    sizeZ: loc.sizeZ || 1,
+    kind: loc.kind ?? 10,
+    plane: loc.plane || 0,
+  };
+  // 317 addWallL: two wall models on one tile (rotations 4+r and r+1).
+  if (loc.kind === 2) {
+    const r = (loc.rot || 0) & 3;
+    return Promise.all([
+      placeLocAt(loc.id, loc.x, loc.z, 4 + r, loc, 2, baseOpts),
+      placeLocAt(loc.id, loc.x, loc.z, (r + 1) & 3, loc, 2, baseOpts),
+    ]).then(() => 1);
+  }
+  return placeLocAt(loc.id, loc.x, loc.z, loc.rot || 0, loc, loc.kind, baseOpts);
+}
+
+async function loadRegionScenery(objects, token) {
+  const list = (objects || []).filter(shouldLoadRegionLoc);
+  if (!list.length) return 0;
+  const BATCH = 24;
+  let loaded = 0;
+  for (let i = 0; i < list.length; i += BATCH) {
+    if (token !== regionSceneryToken) return loaded;
+    const chunk = list.slice(i, i + BATCH);
+    await Promise.all(chunk.map(placeRegionLoc));
+    loaded += chunk.length;
+    if (token === regionSceneryToken) {
+      worldStatusEl.textContent = `Loading scenery ${loaded}/${list.length}...`;
+    }
+  }
+  if (token === regionSceneryToken) {
+    consolidateRegionScenery();
+    applyWorldMaterials();
+  } else snapshotRegionLocPickProxies();
+  return loaded;
 }
 
 function placeSceneryAt(tx, tz) {
@@ -2698,9 +4761,12 @@ function placedRotY(rot) {
 function attachPlacedAnim(obj, gltf) {
   if (!gltf.animations || !gltf.animations.length) return false;
   const mixer = new THREE.AnimationMixer(obj);
-  const clip = gltf.animations.find(c => c.name === 'idle') || gltf.animations[0];
-  tuneClipInterp(clip);
+  const clip = gltf.animations.find(c => c.name === 'loc')
+    || gltf.animations.find(c => c.name === 'idle')
+    || gltf.animations[0];
+  applyClipInterpolation(clip, { tweening: false, three: THREE });
   mixer.clipAction(clip).setLoop(THREE.LoopRepeat).play();
+  mixer._owner = obj;
   obj.userData.mixer = mixer;
   placedMixers.push(mixer);
   return true;
@@ -2715,7 +4781,7 @@ function placeNpcAt(id, tx, tz, rot, meta) {
       const obj = gltf.scene;
       applyWire(obj);
       obj.position.copy(tileToScene(tx, tz));
-      obj.rotation.y = placedRotY(rot);
+      obj.rotation.y = placedRotY(bakeLocRot(rot));
       const m = meta || npcById[id] || {};
       obj.userData.npc = {
         id,
@@ -2830,14 +4896,11 @@ function renderWorldLocList(filter) {
     (matches.length > 300 ? ' (showing 300)' : '') + '.';
 }
 function selectWorldLoc(id) {
-  const meta = locById[id] || {};
-  selectedLoc = {
+  selectedLoc = enrichRegionLoc({
     id,
     rot: parseInt(worldLocRotEl.value, 10) || 0,
-    name: meta.name || `loc_${id}`,
-    actions: meta.actions || [],
-    examine: meta.examine || '',
-  };
+    ...(locById[id] || {}),
+  });
   selectedNpc = null;
   worldLocSelEl.textContent = `Selected: ${selectedLoc.name} (#${id}). Enable Place and click a tile.`;
   setPlaceMode(true);
@@ -3126,6 +5189,7 @@ function setCameraLock(on) {
   if (cameraLock) updateCameraFollow(); // snap onto the player immediately
 }
 camLockBtn.addEventListener('click', () => setCameraLock(!cameraLock));
+setCameraLock(true);
 resetTilesBtn.addEventListener('click', () => {
   for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++) {
     const m = tileMeshes[x * GRID + z];
@@ -3153,8 +5217,103 @@ worldNpcRotEl.addEventListener('change', () => {
 });
 placeKindLocBtn.addEventListener('click', () => setPlaceKind('loc'));
 placeKindNpcBtn.addEventListener('click', () => setPlaceKind('npc'));
+async function loadCacheRegion(rx, ry) {
+  if (!worldActive) await enterWorld();
+  worldStatusEl.textContent = `Loading region (${rx}, ${ry})...`;
+  const sceneryToken = ++regionSceneryToken;
+  try {
+    const [metaRes, glbRes, objRes] = await Promise.all([
+      fetch(`/api/region/${rx}/${ry}.json`),
+      fetch(`/api/region/${rx}/${ry}/terrain.glb`),
+      fetch(`/api/region/${rx}/${ry}/objects.json`),
+    ]);
+    if (!metaRes.ok) throw new Error(`region json HTTP ${metaRes.status}`);
+    if (!glbRes.ok) throw new Error(`terrain glb HTTP ${glbRes.status}`);
+    const terrainMeta = await metaRes.json();
+    const buf = await glbRes.arrayBuffer();
+    let sceneryMeta = null;
+    if (objRes.ok) sceneryMeta = await objRes.json();
+    const gridSize = terrainMeta.size || 64;
+    const wasActive = worldActive;
+    disposeWorld();
+    activeGrid = gridSize;
+    activeHalf = activeGrid * TILE / 2;
+    regionSceneryToken = sceneryToken;
+    regionTerrain = terrainMeta;
+    worldActive = wasActive;
+    buildGrid();
+    const gltf = await new Promise((res, rej) => loader.parse(buf.slice(0), '', g => res(g), rej));
+    regionMesh = gltf.scene;
+    applyTerrainMaterials(regionMesh, { wireframe, shadingMode, three: THREE });
+    regionMesh.traverse((o) => {
+      if (o.isMesh && o.geometry) o.geometry.computeBoundingSphere();
+    });
+    syncTerrainMeshFrame();
+    for (const m of tileMeshes) if (m) m.visible = false;
+    await loadRegionMinimap(rx, ry);
+    playerTile = { x: Math.floor(activeGrid / 2), z: Math.floor(activeGrid / 2) };
+    await loadPlayer();
+    if (player) {
+      const p = tileToScene(playerTile.x, playerTile.z, { forPlayer: true });
+      player.position.set(p.x, p.y, p.z);
+    }
+    syncWorldCameraClip();
+    setCameraLock(true);
+    snapCameraToPlayer();
+    const blocked = (regionTerrain.blocked || []).flat().filter(Boolean).length;
+    let sceneryCount = 0;
+    if (sceneryMeta && sceneryMeta.objects && sceneryMeta.objects.length) {
+      regionLocCatalog = sceneryMeta.objects.filter(shouldLoadRegionLoc).map(enrichRegionLoc);
+      sceneryCount = await loadRegionScenery(sceneryMeta.objects, sceneryToken);
+    } else {
+      regionLocCatalog = [];
+    }
+    const sceneryNote = sceneryCount
+      ? `${sceneryCount} scenery objects loaded.`
+      : (objRes.ok ? 'No scenery in region.' : 'Scenery unavailable (landscape missing).');
+    worldStatusEl.textContent = `Region (${rx},${ry}) — origin ${regionTerrain.originX},${regionTerrain.originY}. `
+      + `Blocked tiles: ${blocked}. ${sceneryNote} Click to walk.`;
+  } catch (err) {
+    console.error(err);
+    worldStatusEl.textContent = 'Region load failed: ' + err.message;
+  }
+}
+
+function resetFlatGrid() {
+  regionTerrain = null;
+  regionMesh = null;
+  disposeRegionFrame();
+  hideRegionMinimap();
+  activeGrid = GRID;
+  activeHalf = HALF;
+  if (!worldActive) return;
+  disposeWorld();
+  worldActive = true;
+  buildGrid();
+  playerTile = { x: Math.floor(GRID / 2), z: Math.floor(GRID / 2) };
+  loadPlayer();
+  worldStatusEl.textContent = 'Flat 30×30 grid restored.';
+}
+
 exportMapBtn.addEventListener('click', exportMap);
 importMapBtn.addEventListener('click', () => importMapFileEl.click());
+if (loadRegionBtn) {
+  loadRegionBtn.addEventListener('click', () => {
+    const rx = parseInt(regionXEl?.value || '48', 10) || 48;
+    const ry = parseInt(regionYEl?.value || '54', 10) || 54;
+    loadCacheRegion(rx, ry);
+  });
+}
+if (drawDistTilesEl) {
+  drawDistTilesEl.addEventListener('change', () => {
+    worldDrawDistTiles = parseInt(drawDistTilesEl.value, 10);
+    if (Number.isNaN(worldDrawDistTiles)) worldDrawDistTiles = 28;
+    resetRegionSceneryCull();
+    syncWorldCameraClip();
+    updateRegionSceneryVisibility(true);
+  });
+}
+if (resetRegionBtn) resetRegionBtn.addEventListener('click', resetFlatGrid);
 importMapFileEl.addEventListener('change', () => {
   const f = importMapFileEl.files && importMapFileEl.files[0];
   if (!f) return;
@@ -3455,10 +5614,20 @@ function buildNpcRecolorControls() {
       inp.addEventListener('change', applyDst);
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') applyDst(); });
       row.appendChild(inp);
+      const black = document.createElement('button');
+      black.type = 'button';
+      black.textContent = 'K';
+      black.title = 'Quick black (HSL index 0)';
+      black.style.flex = '0 0 24px';
+      black.addEventListener('click', async () => {
+        inp.value = '0';
+        await applyDst();
+      });
+      row.appendChild(black);
       const quick = document.createElement('button');
       quick.type = 'button';
       quick.textContent = 'W';
-      quick.title = 'Quick white (palette 127:127)';
+      quick.title = 'Quick near-white (HSL index 127)';
       quick.style.flex = '0 0 24px';
       quick.addEventListener('click', async () => {
         inp.value = '127';
@@ -3657,6 +5826,75 @@ crNpcAddModelBtn?.addEventListener('click', () => {
   reloadCreatorPreview(false);
 });
 crNpcPreview?.addEventListener('click', () => reloadCreatorPreview(false));
+
+document.getElementById('npcOverrideLoad')?.addEventListener('click', () => {
+  const id = selectedNpcIdFromBrowser();
+  if (!id) {
+    npcOverrideStatus.textContent = 'Select an NPC from the list first.';
+    return;
+  }
+  loadNpcOverrideJsonForId(id).catch(e => { npcOverrideStatus.textContent = String(e); });
+});
+document.getElementById('npcOverrideApply')?.addEventListener('click', () => {
+  applyNpcOverrideFromJson(false).catch(e => { npcOverrideStatus.textContent = String(e); });
+});
+document.getElementById('npcOverrideSave')?.addEventListener('click', () => {
+  try { saveNpcOverrideFromUi(); } catch (e) { npcOverrideStatus.textContent = String(e); }
+});
+document.getElementById('npcOverrideLoadSaved')?.addEventListener('click', () => {
+  try {
+    loadSavedNpcOverride();
+    applyNpcOverrideFromJson(false).catch(e => { npcOverrideStatus.textContent = String(e); });
+  } catch (e) {
+    npcOverrideStatus.textContent = String(e);
+  }
+});
+document.getElementById('npcOverrideDeleteSaved')?.addEventListener('click', deleteSavedNpcOverride);
+npcOverrideJson?.addEventListener('input', () => {
+  clearTimeout(npcOverridePalettePreviewTimer);
+  clearTimeout(npcOverrideJson._palTimer);
+  npcOverrideJson._palTimer = setTimeout(() => renderNpcOverridePaletteUi(), 400);
+});
+npcOverridePaletteLight?.addEventListener('input', () => {
+  renderNpcOverridePaletteGrid(parseInt(npcOverridePaletteLight.value, 10) || 0);
+});
+document.getElementById('npcOverridePalBlack')?.addEventListener('click', () => {
+  if (!npcOverridePalettePick) return;
+  applyNpcOverrideDst(npcOverridePalettePick.src, 0);
+  npcOverridePalettePick.dst = 0;
+  renderNpcOverridePaletteGrid(0);
+});
+document.getElementById('npcOverridePalWhite')?.addEventListener('click', () => {
+  if (!npcOverridePalettePick) return;
+  applyNpcOverrideDst(npcOverridePalettePick.src, 127);
+  npcOverridePalettePick.dst = 127;
+  renderNpcOverridePaletteGrid(127 & 127);
+});
+document.getElementById('npcOverridePalClose')?.addEventListener('click', closeNpcOverridePalettePicker);
+npcOverrideAddModelBtn?.addEventListener('click', () => {
+  const mid = parseInt(npcOverrideAddModel?.value, 10);
+  if (isNaN(mid)) return;
+  addNpcOverrideModel(mid).catch(e => {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(e);
+  });
+  if (npcOverrideAddModel) npcOverrideAddModel.value = '';
+});
+npcOverrideAddModel?.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const mid = parseInt(npcOverrideAddModel?.value, 10);
+  if (isNaN(mid)) return;
+  addNpcOverrideModel(mid).catch(err => {
+    if (npcOverrideStatus) npcOverrideStatus.textContent = String(err);
+  });
+  npcOverrideAddModel.value = '';
+});
+npcOverrideItemSearchBtn?.addEventListener('click', () => searchNpcOverrideItems());
+npcOverrideItemSearch?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchNpcOverrideItems();
+});
+npcOverrideItemResults?.addEventListener('change', () => selectNpcOverrideItemFromResults());
+npcOverrideItemGender?.addEventListener('change', () => renderNpcOverrideItemSlotButtons());
+renderNpcOverrideSavedList();
 crGender?.addEventListener('change', () => {
   npcCreator.gender = parseInt(crGender.value, 10) || 0;
   if (idkData) npcCreator.applyDefaults(idkData);

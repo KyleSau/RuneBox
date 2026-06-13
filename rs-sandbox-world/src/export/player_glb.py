@@ -21,7 +21,7 @@ from src.export.animation import (
     spotanim_posed_vertices,
 )
 from src.export.gltf_export import build_glb_bytes_multiclip
-from src.export.mesh_assembly import merge_models, model_to_triangles
+from src.export.mesh_assembly import Triangle, merge_models, model_to_triangles, ordered_model_ids
 from src.export.player_design import (
     DEFAULT_SEQ_RUN,
     DEFAULT_SEQ_STAND,
@@ -72,6 +72,17 @@ class PlayerRenderContext:
             self.textures = load_texture_images(self.cache)
             self._textures_loaded = True
         return self.textures or {}
+
+
+def _normalize_feet_y(triangles: list[Triangle]) -> None:
+    """Shift model so the lowest vertex sits on y=0 (feet on ground)."""
+    min_y = min(v[1] for tri in triangles for v in (tri.v0, tri.v1, tri.v2))
+    if abs(min_y) < 1e-4:
+        return
+    for tri in triangles:
+        tri.v0 = (tri.v0[0], tri.v0[1] - min_y, tri.v0[2])
+        tri.v1 = (tri.v1[0], tri.v1[1] - min_y, tri.v1[2])
+        tri.v2 = (tri.v2[0], tri.v2[1] - min_y, tri.v2[2])
 
 
 def _resolve_kits(idks, gender: int, kit_indices) -> list[int]:
@@ -139,11 +150,7 @@ def build_player_glb_bytes(
 ) -> bytes | None:
     colors = list(colors or [0, 0, 0, 0, 0])
     kits = _resolve_kits(ctx.idks, gender, kit_indices)
-    model_ids = kit_model_ids(ctx.idks, kits)
-    if extra_model_ids:
-        for mid in extra_model_ids:
-            if mid is not None and mid >= 0:
-                model_ids.append(int(mid))
+    model_ids = ordered_model_ids(kit_model_ids(ctx.idks, kits), extra_model_ids)
     if not model_ids:
         return None
 
@@ -165,6 +172,8 @@ def build_player_glb_bytes(
     )
     if not triangles:
         return None
+
+    _normalize_feet_y(triangles)
 
     clips: list[dict] = []
     if ctx.anim is not None:

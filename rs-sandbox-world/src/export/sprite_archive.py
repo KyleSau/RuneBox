@@ -30,6 +30,12 @@ NEEDED_SPRITES = {
     "redstone3": 1,
     "invback": 1,      # 190x261 inventory/equipment panel background
     "wornicons": 12,   # equipment empty-slot ghost icons
+    # Minimap chrome (317 areaMapback / drawMinimap).
+    "mapback": 1,
+    "compass": 1,
+    "mapedge": 1,
+    # Fixed-mode chatbox background (Game.drawChatback).
+    "chatback": 1,
 }
 
 

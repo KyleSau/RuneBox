@@ -11,12 +11,14 @@ from src.export.gltf_export import build_glb_bytes, build_glb_bytes_multiclip
 from src.export.player_glb import _morph_clip
 from src.export.mesh_assembly import (
     assemble_npc_triangles,
+    merge_models,
     merge_npc_model,
     model_to_triangles,
     npc_recolor_map,
+    ordered_model_ids,
 )
 from src.rs2.model_decoder import decode_model
-from src.export.texture_archive import load_texture_images
+from src.export.texture_archive import load_texture_images, load_texture_sprites
 from src.rs2.palette import build_palette, hsl_to_rgb
 
 if TYPE_CHECKING:
@@ -31,13 +33,19 @@ class NpcRenderContext:
     anim: AnimationData | None
     palette: list[int]
     textures: dict[int, object] | None = None
+    texture_sprites: dict | None = None
     _textures_loaded: bool = False
 
     def ensure_textures(self) -> dict[int, object]:
         if not self._textures_loaded:
-            self.textures = load_texture_images(self.cache)
+            self.texture_sprites = load_texture_sprites(self.cache)
+            self.textures = {tid: s.image for tid, s in self.texture_sprites.items()}
             self._textures_loaded = True
         return self.textures or {}
+
+    def ensure_texture_sprites(self) -> dict:
+        self.ensure_textures()
+        return self.texture_sprites or {}
 
 
 def build_npc_glb_bytes(
@@ -52,6 +60,7 @@ def build_npc_glb_bytes(
         return None
 
     textures = ctx.ensure_textures()
+    texture_sprites = ctx.ensure_texture_sprites()
     recolor = npc_recolor_map(npc)
     frame_deltas = None
     frame_color_deltas = None
@@ -85,6 +94,7 @@ def build_npc_glb_bytes(
                 scale_xy=128,
                 scale_z=128,
                 textures=textures,
+                texture_sprites=texture_sprites,
                 vertices=posed0,
                 face_alphas=export_alphas,
             )
@@ -93,7 +103,7 @@ def build_npc_glb_bytes(
         merged = merge_npc_model(npc, ctx.cache)
 
     if triangles is None:
-        triangles = assemble_npc_triangles(npc, ctx.cache, ctx.palette, textures)
+        triangles = assemble_npc_triangles(npc, ctx.cache, ctx.palette, textures, texture_sprites)
     if not triangles:
         return None
 
@@ -233,6 +243,38 @@ def npc_clone_detail(ctx: NpcRenderContext, npc_id: int) -> dict | None:
     }
 
 
+def model_part_detail(
+    ctx: NpcRenderContext,
+    model_id: int,
+    recolor_overrides: dict[int, int] | None = None,
+) -> dict:
+    """Colour slots for one model part (NPC override editor)."""
+    raw = ctx.cache.read_model(model_id)
+    if raw is None:
+        return {"id": model_id, "missing": True, "slots": []}
+    model = decode_model(model_id, raw)
+    if model is None:
+        return {"id": model_id, "missing": True, "slots": []}
+    recolor = recolor_overrides or {}
+    palette = ctx.palette
+    slots = []
+    for src in model_color_slots(model):
+        dst = recolor.get(src, src)
+        slots.append({
+            "src": src,
+            "dst": dst,
+            "srcRgb": hsl_rgb_hex(src, palette),
+            "dstRgb": hsl_rgb_hex(dst, palette),
+            "recolored": src in recolor,
+        })
+    return {
+        "id": model_id,
+        "missing": False,
+        "faceCount": len(model.faces),
+        "slots": slots,
+    }
+
+
 def build_model_glb_bytes(
     ctx: NpcRenderContext,
     model_id: int,
@@ -246,8 +288,10 @@ def build_model_glb_bytes(
     if model is None:
         return None
     textures = ctx.ensure_textures()
+    texture_sprites = ctx.ensure_texture_sprites()
     triangles = model_to_triangles(
         model, ctx.palette, recolor=recolor or {}, textures=textures,
+        texture_sprites=texture_sprites,
     )
     if not triangles:
         return None
@@ -263,8 +307,10 @@ def assemble_custom_npc_triangles(
     scale_xy: int = 128,
     scale_z: int = 128,
     textures: dict[int, object] | None = None,
+    texture_sprites=None,
 ) -> list:
     triangles = []
+    model_layer = 0
     for model_id in model_ids:
         raw = cache.read_model(model_id)
         if raw is None:
@@ -280,8 +326,11 @@ def assemble_custom_npc_triangles(
                 scale_xy=scale_xy,
                 scale_z=scale_z,
                 textures=textures,
+                texture_sprites=texture_sprites,
+                model_layer=model_layer,
             )
         )
+        model_layer += 1
     return triangles
 
 
@@ -298,26 +347,40 @@ def build_npc_custom_glb_bytes(
     npc = ctx.index.get(base_id)
     if npc is None:
         return None
-    mids = list(model_ids if model_ids is not None else (npc.model_ids or []))
-    if extra_model_ids:
-        for mid in extra_model_ids:
-            if mid not in mids:
-                mids.append(mid)
+    mids = ordered_model_ids(
+        model_ids if model_ids is not None else (npc.model_ids or []),
+        extra_model_ids,
+    )
     if not mids:
         return None
+
+    stock_mids = list(npc.model_ids or [])
+    # Walk/attack/death morphs assume the stock model layout; stand idle is safe on
+    # any merged layout where compute_seq_morphs succeeds (custom queens, etc.).
+    # Trailing add-ons only (e.g. wizard staff) keep the stock prefix for combat anims.
+    morph_anims_compatible = (
+        mids == stock_mids
+        or (
+            len(mids) >= len(stock_mids)
+            and mids[: len(stock_mids)] == stock_mids
+        )
+    )
 
     recolor = npc_recolor_map(npc)
     if recolor_overrides:
         recolor.update({int(k): int(v) for k, v in recolor_overrides.items()})
 
     textures = ctx.ensure_textures()
+    texture_sprites = ctx.ensure_texture_sprites()
     frame_deltas = None
     frame_color_deltas = None
     frame_durations = None
     triangles = None
-    merged = merge_npc_model(npc, ctx.cache) if ctx.anim else None
-
-    seq = ctx.anim.stand_seq(npc) if ctx.anim else None
+    merged = None
+    seq = None
+    if ctx.anim:
+        merged = merge_models(mids, ctx.cache)
+        seq = ctx.anim.stand_seq(npc)
     if seq is not None and ctx.anim and merged is not None:
         morphs = compute_seq_morphs(
             merged,
@@ -343,6 +406,7 @@ def build_npc_custom_glb_bytes(
                 scale_xy=128,
                 scale_z=128,
                 textures=textures,
+                texture_sprites=texture_sprites,
                 vertices=posed0,
                 face_alphas=export_alphas,
             )
@@ -356,6 +420,7 @@ def build_npc_custom_glb_bytes(
             scale_xy=npc.scale_xy,
             scale_z=npc.scale_z,
             textures=textures,
+            texture_sprites=texture_sprites,
         )
     if not triangles:
         return None
@@ -372,10 +437,9 @@ def build_npc_custom_glb_bytes(
             "interpolation": "LINEAR",
         })
 
-    if extra_anims and ctx.anim and merged is None:
-        merged = merge_npc_model(npc, ctx.cache)
-
-    if extra_anims and ctx.anim and merged is not None:
+    if extra_anims and ctx.anim and morph_anims_compatible:
+        if merged is None:
+            merged = merge_models(mids, ctx.cache)
         for seq_id, name in extra_anims:
             seq = ctx.anim.seqs.get(seq_id)
             if not seq:

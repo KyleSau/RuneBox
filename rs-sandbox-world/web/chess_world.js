@@ -11,7 +11,12 @@ import {
   npcAnimUrl,
   pieceDamage,
   CHESS_SPELLS,
+  COMBAT_TICKS,
+  CYCLE_MS,
+  chessChebyshev,
 } from './chess_combat.js';
+
+const WALK_TIME = 0.6;
 
 /** NPC ids from the 377 cache (see /api/npcs.json). */
 export const CHESS_NPCS = {
@@ -146,12 +151,21 @@ export function createChessWorld(ctx) {
   function setupMixer(gltf, entry) {
     entry.actions = {};
     entry.current = null;
+    entry.oneShot = null;
     if (!gltf.animations?.length) {
       entry.mixer = null;
       return;
     }
     entry.mixer = new THREE.AnimationMixer(entry.obj);
     mixers.push(entry.mixer);
+    entry.mixer.addEventListener('finished', (e) => {
+      const a = e.action;
+      if (a === entry.actions?.idle) return;
+      if (entry.oneShot === a) {
+        entry.oneShot = null;
+        restoreIdle(entry, 0.1);
+      }
+    });
     for (const clip of gltf.animations) {
       tuneClipInterp(clip);
       const action = entry.mixer.clipAction(clip);
@@ -167,6 +181,22 @@ export function createChessWorld(ctx) {
     }
   }
 
+  function restoreIdle(entry, fade = 0.12) {
+    const idle = entry?.actions?.idle;
+    if (!idle || !entry?.mixer) return;
+    for (const [name, act] of Object.entries(entry.actions)) {
+      if (name === 'idle' || act === idle) continue;
+      act.fadeOut(fade);
+      act.stop();
+    }
+    idle.reset();
+    idle.setLoop(THREE.LoopRepeat, Infinity);
+    idle.clampWhenFinished = false;
+    idle.fadeIn(fade).play();
+    entry.current = idle;
+    entry.oneShot = null;
+  }
+
   function playAnim(entry, name, { fade = 0.12 } = {}) {
     return new Promise(resolve => {
       const action = entry.actions?.[name];
@@ -174,21 +204,74 @@ export function createChessWorld(ctx) {
         resolve();
         return;
       }
-      const done = (e) => {
-        if (e.action !== action) return;
-        entry.mixer.removeEventListener('finished', done);
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        entry.mixer.removeEventListener('finished', onFinished);
+        clearTimeout(fallback);
         resolve();
       };
-      if (!action.loop) entry.mixer.addEventListener('finished', done);
+      const onFinished = (e) => {
+        if (e.action !== action) return;
+        finish();
+      };
+      const isLoop = action.loop === THREE.LoopRepeat;
+      if (!isLoop) {
+        entry.mixer.addEventListener('finished', onFinished);
+        entry.oneShot = action;
+      }
       if (entry.current && entry.current !== action) entry.current.fadeOut(fade);
       action.reset().fadeIn(fade).play();
       entry.current = action;
-      if (action.loop) resolve();
+      if (isLoop) {
+        finish();
+        return;
+      }
+      const durMs = Math.max(50, action.getClip().duration * 1000 + 80);
+      const fallback = setTimeout(finish, durMs);
     });
+  }
+
+  /** One-shot clip, then return to idle stand. */
+  async function playAnimOnce(entry, name, opts) {
+    await playAnim(entry, name, opts);
+    restoreIdle(entry, opts?.fade ?? 0.12);
   }
 
   function waitMs(ms) {
     return fx?.delay ? fx.delay(ms) : new Promise(r => setTimeout(r, ms));
+  }
+
+  async function waitTicks(ticks) {
+    if (fx?.waitTicks) return fx.waitTicks(ticks);
+    return waitMs(ticks * CYCLE_MS);
+  }
+
+  function commitAttackerMove(attacker, move) {
+    pieces.delete(move.from);
+    pieces.set(move.to, attacker);
+    attacker.sq = move.to;
+    attacker.obj.userData.chess.sq = move.to;
+  }
+
+  async function slidePieceTo(entry, tx, tz, { fromTx, fromTz, commit = true } = {}) {
+    let dist = 1;
+    if (fromTx != null && fromTz != null) {
+      dist = Math.max(1, Math.max(Math.abs(tx - fromTx), Math.abs(tz - fromTz)));
+    }
+    await animateObj(entry.obj, tx, tz, WALK_TIME * dist);
+    restoreIdle(entry);
+    if (commit && entry.sq) {
+      const fromSq = entry.sq;
+      const toSq = tileToSq(tx, tz);
+      if (toSq && fromSq !== toSq) {
+        pieces.delete(fromSq);
+        pieces.set(toSq, entry);
+        entry.sq = toSq;
+        entry.obj.userData.chess.sq = toSq;
+      }
+    }
   }
 
   function loadNpc(id, type, color) {
@@ -238,13 +321,8 @@ export function createChessWorld(ctx) {
   async function relocateCaptured(victim) {
     const { x, z } = sidelineTile(victim.color);
     victim.offBoard = true;
-    await animateObj(victim.obj, x, z, 0.35);
-    const idle = victim.actions?.idle;
-    if (idle) {
-      victim.current?.fadeOut?.(0.1);
-      idle.reset().fadeIn(0.1).play();
-      victim.current = idle;
-    }
+    await animateObj(victim.obj, x, z, WALK_TIME * 0.6);
+    restoreIdle(victim);
   }
 
   async function teleportTo(entry, tx, tz) {
@@ -255,23 +333,59 @@ export function createChessWorld(ctx) {
     entry.obj.position.copy(pos);
     if (fx?.spawnGfx) fx.spawnGfx(pos, TELEPORT_GFX, 'HIGH', yaw);
     await playAnim(entry, 'teleport_end');
-    const idle = entry.actions?.idle;
-    if (idle) {
-      idle.reset().fadeIn(0.08).play();
-      entry.current = idle;
+    restoreIdle(entry);
+  }
+
+  async function spawnHitmark(victim, dmg) {
+    if (fx?.spawnHit) fx.spawnHit(victim.obj, dmg);
+    await waitTicks(COMBAT_TICKS.HITMARK_HOLD);
+  }
+
+  async function playVictimDeath(victim) {
+    await playAnim(victim, 'death');
+    await waitTicks(COMBAT_TICKS.DEATH_HOLD);
+    await relocateCaptured(victim);
+  }
+
+  async function applyMeleeHit(victim, dmg) {
+    pieces.delete(victim.sq);
+    await spawnHitmark(victim, dmg);
+    await playVictimDeath(victim);
+  }
+
+  /**
+   * Tick-based melee capture: face → attack → hit on connect tick → death → walk onto square.
+   */
+  async function meleeCaptureSequence(attacker, victim, move, {
+    animName = 'attack',
+    hitTicks = COMBAT_TICKS.MELEE_HIT,
+    moveAfter = true,
+  } = {}) {
+    const dmg = pieceDamage(victim.type);
+    const capTile = sqToTile(move.to);
+    const fromTile = sqToTile(move.from);
+    const vTile = sqToTile(victim.sq);
+    faceToward(attacker.obj, vTile.x, vTile.z);
+    const attackDone = playAnim(attacker, animName);
+    await waitTicks(hitTicks);
+    await applyMeleeHit(victim, dmg);
+    await attackDone;
+    restoreIdle(attacker);
+    if (moveAfter && move.from !== move.to) {
+      await slidePieceTo(attacker, capTile.x, capTile.z, {
+        fromTx: fromTile.x, fromTz: fromTile.z, commit: true,
+      });
     }
   }
 
-  async function applyDamage(victim, dmg) {
-    if (fx?.spawnHit) fx.spawnHit(victim.obj, dmg);
-    await waitMs(350);
+  /** Pawn / imp: face → punch → hitmark → death → walk onto captured square. */
+  async function pawnCapture(attacker, victim, move) {
+    await meleeCaptureSequence(attacker, victim, move, { animName: 'attack' });
   }
 
-  async function killVictim(victim, dmg) {
-    await applyDamage(victim, dmg);
-    await playAnim(victim, 'death');
-    await waitMs(200);
-    await relocateCaptured(victim);
+  /** King: face → kick → hitmark → death → walk onto captured square. */
+  async function kingCapture(attacker, victim, move) {
+    await meleeCaptureSequence(attacker, victim, move, { animName: 'attack' });
   }
 
   async function castSpellAtTarget(attacker, victim, spell) {
@@ -280,83 +394,101 @@ export function createChessWorld(ctx) {
     const from = attacker.obj.position.clone();
     const to = victim.obj.position.clone();
     const yaw = attacker.obj.rotation.y;
-    await playAnim(attacker, spell.anim);
+    if (spell.castSound != null && fx?.playSfx) fx.playSfx(spell.castSound, from);
+    await playAnimOnce(attacker, spell.anim);
     if (fx?.castSpellAt) {
       await fx.castSpellAt(from, to, spell, yaw);
     } else {
-      await waitMs(600);
+      await waitTicks(30);
     }
   }
 
+  /** Bishop: spell → hitmark/death on impact → teleport onto captured square. */
   async function bishopCapture(attacker, victim, move) {
     const spell = bishopSpell(attacker.color);
     const dmg = pieceDamage(victim.type);
     const toTile = sqToTile(move.to);
     await castSpellAtTarget(attacker, victim, spell);
-    pieces.delete(victim.sq);
-    await killVictim(victim, dmg);
-    pieces.delete(move.from);
-    pieces.set(move.to, attacker);
-    attacker.sq = move.to;
-    attacker.obj.userData.chess.sq = move.to;
+    await applyMeleeHit(victim, dmg);
+    commitAttackerMove(attacker, move);
     await teleportTo(attacker, toTile.x, toTile.z);
   }
 
-  async function queenCapture(attacker, victim, move) {
-    const spell = CHESS_SPELLS.fire_blast;
+  /** Queen ranged: ice barrage + sounds → hitmark/death → teleport to square. */
+  async function queenRangedCapture(attacker, victim, move) {
+    const spell = CHESS_SPELLS.ice_barrage;
     const dmg = pieceDamage(victim.type);
     const toTile = sqToTile(move.to);
     await castSpellAtTarget(attacker, victim, spell);
-    pieces.delete(victim.sq);
-    await killVictim(victim, dmg);
-    pieces.delete(move.from);
-    pieces.set(move.to, attacker);
-    attacker.sq = move.to;
-    attacker.obj.userData.chess.sq = move.to;
+    await applyMeleeHit(victim, dmg);
+    commitAttackerMove(attacker, move);
     await teleportTo(attacker, toTile.x, toTile.z);
   }
 
-  async function knightCapture(attacker, victim, move) {
-    const dmg = pieceDamage(victim.type);
+  /** Queen adjacent: slide onto square → whip → hitmark/death. */
+  async function queenMeleeCapture(attacker, victim, move) {
     const capTile = sqToTile(move.to);
+    const fromTile = sqToTile(move.from);
+    const vTile = sqToTile(victim.sq);
+    faceToward(attacker.obj, vTile.x, vTile.z);
+    if (move.from !== move.to) {
+      await slidePieceTo(attacker, capTile.x, capTile.z, {
+        fromTx: fromTile.x, fromTz: fromTile.z, commit: false,
+      });
+      faceToward(attacker.obj, vTile.x, vTile.z);
+    }
+    const whip = attacker.actions?.attack_whip ? 'attack_whip' : 'attack';
+    await meleeCaptureSequence(attacker, victim, move, {
+      animName: whip,
+      moveAfter: true,
+    });
+  }
+
+  async function queenCapture(attacker, victim, move) {
+    const dist = chessChebyshev(move.from, move.to);
+    if (dist > 1) return queenRangedCapture(attacker, victim, move);
+    return queenMeleeCapture(attacker, victim, move);
+  }
+
+  /** Knight/Rook: slide to square → 2h attack on tile → hitmark/death (stay put). */
+  async function slideMeleeCapture(attacker, victim, move) {
+    const capTile = sqToTile(move.to);
+    const fromTile = sqToTile(move.from);
+    const vTile = sqToTile(victim.sq);
+    await slidePieceTo(attacker, capTile.x, capTile.z, {
+      fromTx: fromTile.x, fromTz: fromTile.z, commit: false,
+    });
+    faceToward(attacker.obj, vTile.x, vTile.z);
     const atkName = attacker.actions?.attack_2h ? 'attack_2h' : 'attack';
-    await teleportTo(attacker, capTile.x, capTile.z);
-    faceToward(attacker.obj, sqToTile(victim.sq).x, sqToTile(victim.sq).z);
-    await playAnim(attacker, atkName);
-    pieces.delete(victim.sq);
-    await killVictim(victim, dmg);
-    pieces.delete(move.from);
-    pieces.set(move.to, attacker);
-    attacker.sq = move.to;
-    attacker.obj.userData.chess.sq = move.to;
+    await meleeCaptureSequence(attacker, victim, move, {
+      animName: atkName,
+      moveAfter: true,
+    });
+  }
+
+  async function impMeleeCapture(attacker, victim, move) {
+    return pawnCapture(attacker, victim, move);
   }
 
   async function meleeCapture(attacker, victim, move) {
-    const dmg = pieceDamage(victim.type);
-    const capTile = sqToTile(move.to);
-    const vTile = sqToTile(victim.sq);
-    faceToward(attacker.obj, vTile.x, vTile.z);
-    const atkName = attacker.actions?.attack ? 'attack' : (attacker.actions?.attack_2h ? 'attack_2h' : 'idle');
-    if (move.from !== move.to) {
-      await animateObj(attacker.obj, capTile.x, capTile.z, 0.22);
-      pieces.delete(move.from);
-      pieces.set(move.to, attacker);
-      attacker.sq = move.to;
-      attacker.obj.userData.chess.sq = move.to;
-    }
-    await playAnim(attacker, atkName);
-    pieces.delete(victim.sq);
-    await killVictim(victim, dmg);
+    return pawnCapture(attacker, victim, move);
   }
 
   async function playCapture(attacker, victim, move) {
     const style = captureStyle(attacker.type, attacker.color);
-    if (style === 'bishop_spell') return bishopCapture(attacker, victim, move);
-    if (style === 'queen_spell') return queenCapture(attacker, victim, move);
-    if (style === 'knight_teleport_melee' || style === 'rook_teleport_melee') {
-      return knightCapture(attacker, victim, move);
+    try {
+      if (style === 'bishop_spell') await bishopCapture(attacker, victim, move);
+      else if (style === 'queen_spell') await queenCapture(attacker, victim, move);
+      else if (style === 'knight_slide_melee' || style === 'rook_slide_melee') {
+        await slideMeleeCapture(attacker, victim, move);
+      } else if (style === 'king_melee') await kingCapture(attacker, victim, move);
+      else if (style === 'imp_melee') await impMeleeCapture(attacker, victim, move);
+      else if (style === 'pawn_melee') await pawnCapture(attacker, victim, move);
+      else await meleeCapture(attacker, victim, move);
+    } finally {
+      restoreIdle(attacker);
+      await waitTicks(COMBAT_TICKS.POST_CAPTURE);
     }
-    return meleeCapture(attacker, victim, move);
   }
 
   function castlingRookSquares(move) {
@@ -380,12 +512,15 @@ export function createChessWorld(ctx) {
   async function movePieceVisual(fromSq, toSq) {
     const p = pieces.get(fromSq);
     if (!p) return;
+    const fromT = sqToTile(fromSq);
+    const { x, z } = sqToTile(toSq);
     pieces.delete(fromSq);
     pieces.set(toSq, p);
     p.sq = toSq;
     p.obj.userData.chess.sq = toSq;
-    const { x, z } = sqToTile(toSq);
-    await animateObj(p.obj, x, z, 0.28);
+    const dist = Math.max(1, Math.max(Math.abs(x - fromT.x), Math.abs(z - fromT.z)));
+    await animateObj(p.obj, x, z, WALK_TIME * dist);
+    restoreIdle(p);
   }
 
   function removePiece(sq) {
